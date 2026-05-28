@@ -94,6 +94,7 @@ docker-compose logs -f arc-worker-01
 | IdentityRegistry    | `0x8004A818BFB912233c491871b3d84c89A494BD9e`  |
 | ReputationRegistry  | `0x8004B663056A597Dffe9eCcC1965A193B7388713`  |
 | ValidationRegistry  | `0x8004Cb1BF31DAf7788923b405b754f57acEB4272`  |
+| AgenticLendingPool  | `0xedcdc17827a787ef5802335d1ac24df5764fa858`  | (Deployed Contract)
 
 ## Task Types
 
@@ -104,15 +105,25 @@ docker-compose logs -f arc-worker-01
 | `onchain_identity`     | ERC-8004 register AI agent identity          |
 | `payment_processing`   | ERC-8183 full job lifecycle (5 USDC escrow)  |
 | `reputation_building`  | ERC-8004 giveFeedback on ReputationRegistry  |
+| `lending_borrowing`    | Deposit USDC collateral, borrow EURC, auto-manage health factor |
 
-## Task Schedules
+## Agentic Lending & Borrowing (Tính năng nâng cao)
 
-| Schedule              | Ý nghĩa                            |
-|-----------------------|------------------------------------|
-| `every_poll`          | Chạy mỗi poll cycle               |
-| `once`                | Chạy đúng 1 lần, skip sau đó      |
-| `manual`              | Chỉ chạy khi trigger thủ công     |
-| `after_task_complete` | Chạy sau khi task khác hoàn thành |
+Hệ thống tích hợp một giao thức **Lending & Borrowing** thông minh, quản trị dòng tiền tự động (Machine-Speed Treasury):
+
+1. **Smart Contract (`AgenticLendingPool.sol`)**:
+   * Địa chỉ: `0xedcdc17827a787ef5802335d1ac24df5764fa858`
+   * Cho phép nạp USDC làm tài sản thế chấp (Collateral), vay EURC với hạn mức tối đa **80% LTV** (tỷ giá cố định 1 USDC = 1.10 EURC).
+   * Hỗ trợ rút tài sản thế chấp và hoàn trả EURC để giảm nợ.
+
+2. **Cơ chế Tự động Phòng vệ (Credit Line Auto-Defense)**:
+   * Tích hợp tác vụ tự động giám sát trạng thái tài khoản (`auto_manage`).
+   * Khi **Health Factor (Hệ số an toàn)** giảm xuống dưới **`1.20`** (nguy cơ thanh lý cao do vay nhiều hoặc rút bớt tài sản thế chấp), bot sẽ tự động rút **`5.00 USDC`** từ ví Treasury nạp thêm vào hợp đồng thông minh để tăng Health Factor lên mức an toàn (`2.20`).
+
+3. **Giao diện Glassmorphic Dashboard Web**:
+   * Cập nhật Tab **Lending & Borrowing** trực quan tại cổng `http://localhost:3005`.
+   * Hiển thị thời gian thực các chỉ số tài chính: *USDC Collateral, EURC Borrowed, Max Borrow Power, LTV Progress Bar, và Health Factor*.
+   * Cung cấp bảng điều khiển thủ công cho các thao tác: *Deposit, Borrow, Repay, Withdraw*.
 
 ## Runtime Files
 
@@ -127,3 +138,4 @@ docker-compose logs -f arc-worker-01
 - Circle Wallets: https://developers.circle.com
 - ERC-8004 (AI Agent Identity): https://eips.ethereum.org/EIPS/eip-8004
 - ERC-8183 (Agentic Commerce): https://testnet.arcscan.app/address/0x0747EEf0706327138c69792bF28Cd525089e4583
+
