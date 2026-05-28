@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  arc-worker-01:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: arc-worker-01
+    restart: unless-stopped
+    environment:
+      - WORKER_ID=worker-01
+      - CIRCLE_API_KEY=${CIRCLE_API_KEY}
+      - CIRCLE_ENTITY_SECRET=${CIRCLE_ENTITY_SECRET}
+      - ARC_RPC_URL=${ARC_RPC_URL:-https://rpc.testnet.arc.network}
+      - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-30000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - AUTO_RESTART=true
+      - RESTART_DELAY_MS=10000
+    volumes:
+      - ./runtime:/app/runtime
+      - ./config:/app/config:ro
+      - ./tasks:/app/tasks:ro
+    networks:
+      - arc-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  arc-net:
+    driver: bridge

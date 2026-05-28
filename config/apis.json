@@ -1,0 +1,24 @@
+{
+  "arc": {
+    "rpc": "https://rpc.testnet.arc.network",
+    "rpc_urls": [
+      "https://rpc.testnet.arc.network",
+      "https://arc-testnet.drpc.org"
+    ],
+    "rpc_ws": "wss://rpc.testnet.arc.network",
+    "explorer": "https://testnet.arcscan.app",
+    "faucet": "https://faucet.circle.com",
+    "chain_id": 5042002
+  },
+  "contracts": {
+    "usdc": "0x3600000000000000000000000000000000000000",
+    "agentic_commerce": "0x0747EEf0706327138c69792bF28Cd525089e4583",
+    "identity_registry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    "reputation_registry": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    "validation_registry": "0x8004Cb1BF31DAf7788923b405b754f57acEB4272"
+  },
+  "circle": {
+    "base_url": "https://api.circle.com/v1",
+    "console": "https://console.circle.com"
+  }
+}

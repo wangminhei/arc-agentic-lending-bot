@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Arc AI Worker Bot Terminal - Autonomous agent monitoring center for Arc Testnet">
+  <title>Arc Worker Terminal - Dashboard</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Terminal CSS -->
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="terminal-container">
+    <!-- TOP HEADER (Trading Style tickers and status) -->
+    <header class="top-navbar">
+      <div class="nav-left">
+        <div class="logo">
+          <i data-lucide="zap" class="logo-icon"></i>
+          <span>Arc Perp</span>
+        </div>
+        <div class="tickers">
+          <div class="ticker-item">
+            <span class="ticker-label">USDC</span>
+            <span class="ticker-value text-success">$1.0000</span>
+            <span class="ticker-change text-success">0.00%</span>
+          </div>
+          <div class="ticker-item">
+            <span class="ticker-label">EURC</span>
+            <span class="ticker-value text-muted">$1.0825</span>
+            <span class="ticker-change text-danger">-0.05%</span>
+          </div>
+          <div class="ticker-item">
+            <span class="ticker-label">cirBTC</span>
+            <span class="ticker-value text-muted">$76,603.22</span>
+            <span class="ticker-change text-success">+0.12%</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="nav-right">
+        <div class="badge-status-glow">
+          <span class="status-dot pulse" id="status-dot"></span>
+          <span id="status-text" class="text-uppercase text-xs">LIVE</span>
+        </div>
+        <div class="badge-outline">FEED ACTIVE</div>
+        
+        <!-- Wallet Buttons (Click to copy) -->
+        <button class="wallet-btn" onclick="copyAddress('owner-address')" title="Copy Owner Address">
+          <i data-lucide="wallet" size="14"></i>
+          <span id="owner-btn-text">Owner: 0xd7a3...efe0</span>
+        </button>
+        <button class="wallet-btn btn-validator" onclick="copyAddress('validator-address')" title="Copy Validator Address">
+          <i data-lucide="shield-check" size="14"></i>
+          <span id="validator-btn-text">Val: 0xb047...eec8</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- METRICS RIBBON (Top Stats Panel) -->
+    <section class="metrics-ribbon">
+      <div class="metric-block">
+        <span class="metric-label">WORKER ID</span>
+        <strong id="worker-id-badge" class="metric-value">worker-01</strong>
+      </div>
+      <div class="metric-block">
+        <span class="metric-label">POLLS COUNT</span>
+        <strong id="stat-polls" class="metric-value text-primary">0</strong>
+      </div>
+      <div class="metric-block">
+        <span class="metric-label">UPTIME</span>
+        <strong id="stat-uptime" class="metric-value text-success">00:00:00</strong>
+      </div>
+      <div class="metric-block">
+        <span class="metric-label">REFUEL LEVEL</span>
+        <strong class="metric-value text-warning">1 USDC</strong>
+      </div>
+      <div class="metric-block">
+        <span class="metric-label">NETWORK</span>
+        <strong class="metric-value text-primary text-uppercase">Arc Testnet</strong>
+      </div>
+      <div class="metric-block">
+        <span class="metric-label">REGIME</span>
+        <strong class="metric-value text-success text-uppercase">Calm</strong>
+      </div>
+    </section>
+
+    <!-- HIDDEN STORAGE FOR ACTIONS -->
+    <div style="display:none;">
+      <span id="owner-address">0xd7a3c49b5669731693639053d8f4da1ecd31efe0</span>
+      <span id="validator-address">0xb047a1e05f5721c6697fa046cd225cd626e7eec8</span>
+      <span id="stat-last-update">N/A</span>
+    </div>
+
+    <!-- MAIN TERMINAL GRID -->
+    <div class="main-grid">
+      
+      <!-- LEFT REGION: Assets, Charts, Table Tabs -->
+      <div class="left-column">
+        
+        <!-- Asset Cards Panel -->
+        <div class="assets-summary-row">
+          <!-- Card BTC -->
+          <div class="asset-card">
+            <div class="asset-card-header">
+              <span class="asset-name">USDC Balance</span>
+              <span class="asset-pct text-success">Arc Gas</span>
+            </div>
+            <div class="asset-card-body">
+              <div class="balance-row">
+                <span class="lbl">Owner:</span>
+                <span id="owner-usdc" class="val text-success">0.00 USDC</span>
+              </div>
+              <div class="balance-row">
+                <span class="lbl">Validator:</span>
+                <span id="validator-usdc" class="val text-success">0.00 USDC</span>
+              </div>
+            </div>
+            <div class="asset-progress-container">
+              <div class="asset-progress-fill bg-usdc" id="owner-usdc-bar"></div>
+              <div class="asset-progress-fill-alt bg-usdc-alt" id="validator-usdc-bar"></div>
+            </div>
+          </div>
+          <!-- Card EURC -->
+          <div class="asset-card">
+            <div class="asset-card-header">
+              <span class="asset-name">EURC Balance</span>
+              <span class="asset-pct text-primary">Stablecoin</span>
+            </div>
+            <div class="asset-card-body">
+              <div class="balance-row">
+                <span class="lbl">Owner:</span>
+                <span id="owner-eurc" class="val text-primary">0.00 EURC</span>
+              </div>
+              <div class="balance-row">
+                <span class="lbl">Validator:</span>
+                <span id="validator-eurc" class="val text-primary">0.00 EURC</span>
+              </div>
+            </div>
+            <div class="asset-progress-container">
+              <div class="asset-progress-fill bg-eurc" id="owner-eurc-bar"></div>
+              <div class="asset-progress-fill-alt bg-eurc-alt" id="validator-eurc-bar"></div>
+            </div>
+          </div>
+          <!-- Card BTC -->
+          <div class="asset-card">
+            <div class="asset-card-header">
+              <span class="asset-name">cirBTC Balance</span>
+              <span class="asset-pct text-warning">Bitcoin</span>
+            </div>
+            <div class="asset-card-body">
+              <div class="balance-row">
+                <span class="lbl">Owner:</span>
+                <span id="owner-cirbtc" class="val text-warning">0.000000 cirBTC</span>
+              </div>
+              <div class="balance-row">
+                <span class="lbl">Validator:</span>
+                <span id="validator-cirbtc" class="val text-warning">0.000000 cirBTC</span>
+              </div>
+            </div>
+            <div class="asset-progress-container">
+              <div class="asset-progress-fill bg-cirbtc" id="owner-cirbtc-bar"></div>
+              <div class="asset-progress-fill-alt bg-cirbtc-alt" id="validator-cirbtc-bar"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trading / Performance Chart Area -->
+        <div class="chart-panel">
+          <div class="chart-header">
+            <div class="chart-market">
+              <i data-lucide="trending-up" class="chart-trend-icon"></i>
+              <strong>ARC-BOT-ACTIVITY</strong>
+              <span class="chart-resolution text-success">Polling & On-chain Volatility</span>
+            </div>
+            <div class="chart-indicators">
+              <span class="ind-pill">MA</span>
+              <span class="ind-pill">EMA</span>
+              <span class="ind-pill active">VWAP</span>
+              <span class="ind-pill">RSI</span>
+              <span class="ind-pill">Funding</span>
+            </div>
+          </div>
+          <div class="chart-viewport">
+            <canvas id="activity-chart"></canvas>
+          </div>
+          <div class="chart-bottom-metrics">
+            <div class="sub-metric">
+              <span class="lbl">SPREAD DISTANCE</span>
+              <span class="val text-success">5.81 bps</span>
+            </div>
+            <div class="sub-metric">
+              <span class="lbl">ESCROW BALANCES</span>
+              <span class="val">Active Jobs</span>
+            </div>
+            <div class="sub-metric">
+              <span class="lbl">AVG POLL TIME</span>
+              <span class="val text-primary">30s</span>
+            </div>
+            <div class="sub-metric">
+              <span class="lbl">FEED ACCURACY</span>
+              <span class="val text-success">100.00%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Account Data Tabbed Panel (Positions, Orders, Fills, Logs) -->
+        <div class="account-panel">
+          <div class="account-tabs">
+            <button class="account-tab active" data-account-tab="positions">
+              Positions <span class="tab-count-badge" id="tasks-count">0 Tasks</span>
+            </button>
+            <button class="account-tab" data-account-tab="orders">
+              Manual Control
+            </button>
+            <button class="account-tab" data-account-tab="nanopayments">
+              Nanopayments <span class="tab-count-badge" id="nanopay-count">0 Tx</span>
+            </button>
+            <button class="account-tab" data-account-tab="lending">
+              Lending & Borrowing <span class="tab-count-badge" id="lending-health-badge">Safe HF</span>
+            </button>
+            <button class="account-tab" data-account-tab="terminal">
+              System logs
+            </button>
+            <button class="account-tab" data-account-tab="networks">
+              Network Settings
+            </button>
+          </div>
+          
+          <div class="account-content-container">
+            <!-- TAB: POSITIONS (Active Tasks Table) -->
+            <div class="account-tab-content active" id="account-tab-positions">
+              <div class="trading-table-container">
+                <table class="trading-table">
+                  <thead>
+                    <tr>
+                      <th>TASK ID</th>
+                      <th>TASK NAME</th>
+                      <th>TYPE</th>
+                      <th>INTERVAL</th>
+                      <th>PRIORITY</th>
+                      <th>STATUS</th>
+                      <th>LAST EXECUTED</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tasks-table-body">
+                    <tr>
+                      <td colspan="7" class="loading-cell">Loading tasks definitions...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <!-- TAB: NANOPAYMENTS (Nanopayment expenses & list) -->
+            <div class="account-tab-content" id="account-tab-nanopayments">
+              <div class="nanopay-dashboard-layout">
+                <div class="nanopay-stats-row">
+                  <div class="nanopay-stat-box">
+                    <span class="lbl">TOTAL SPENT</span>
+                    <strong class="val text-success" id="nanopay-total-spent">$0.00 USDC</strong>
+                  </div>
+                  <div class="nanopay-stat-box">
+                    <span class="lbl">GATEWAY BALANCE</span>
+                    <strong class="val text-primary" id="nanopay-gateway-balance">0.00 USDC</strong>
+                  </div>
+                  <div class="nanopay-stat-box">
+                    <span class="lbl">REFUEL WALLET</span>
+                    <strong class="val text-warning" id="nanopay-local-wallet">0.00 USDC</strong>
+                  </div>
+                  <div class="nanopay-stat-box">
+                    <span class="lbl">ACTIVE ENDPOINTS</span>
+                    <strong class="val" id="nanopay-active-endpoints">4 APIs</strong>
+                  </div>
+                </div>
+                
+                <div class="nanopay-details-grid">
+                  <!-- Expenses breakdown list -->
+                  <div class="nanopay-breakdown-box">
+                    <h3>Endpoint Allocations</h3>
+                    <div class="breakdown-list" id="nanopay-breakdown-list">
+                      <div class="log-placeholder">Đang tính toán chi phí...</div>
+                    </div>
+                  </div>
+                  
+                  <!-- Nanopay history table -->
+                  <div class="nanopay-table-box">
+                    <h3>Nanopayment Ledger</h3>
+                    <div class="trading-table-container">
+                      <table class="trading-table">
+                        <thead>
+                          <tr>
+                            <th>ENDPOINT</th>
+                            <th>METHOD</th>
+                            <th>COST</th>
+                            <th>DEPOSITED</th>
+                            <th>STATUS</th>
+                            <th>DATE</th>
+                          </tr>
+                        </thead>
+                        <tbody id="nanopay-table-body">
+                          <tr>
+                            <td colspan="6" class="loading-cell">Chưa phát sinh giao dịch EIP-3009</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB: LENDING & BORROWING (Collateralized Debt Position) -->
+            <div class="account-tab-content" id="account-tab-lending">
+              <div class="lending-dashboard-layout">
+                <div class="lending-stats-row">
+                  <div class="lending-stat-box">
+                    <span class="lbl">USDC COLLATERAL</span>
+                    <strong class="val text-success" id="lending-collateral">0.00 USDC</strong>
+                  </div>
+                  <div class="lending-stat-box">
+                    <span class="lbl">EURC BORROWED</span>
+                    <strong class="val text-primary" id="lending-borrowed">0.00 EURC</strong>
+                  </div>
+                  <div class="lending-stat-box">
+                    <span class="lbl">MAX BORROW CAPACITY</span>
+                    <strong class="val text-warning" id="lending-borrow-power">0.00 EURC</strong>
+                  </div>
+                  <div class="lending-stat-box">
+                    <span class="lbl">HEALTH FACTOR</span>
+                    <strong class="val" id="lending-health-factor">N/A</strong>
+                  </div>
+                </div>
+                
+                <div class="lending-progress-section">
+                  <div class="progress-labels">
+                    <span class="lbl">LTV (Loan-To-Value) Utilization: <strong id="lending-ltv-val">0%</strong></span>
+                  </div>
+                  <div class="lending-progress-bar-container">
+                    <div class="lending-progress-bar-fill" id="lending-ltv-fill" style="width: 0%"></div>
+                  </div>
+                  <div class="ltv-labels">
+                    <span>0% (No Borrow)</span>
+                    <span>50% (Comfort)</span>
+                    <span>80% (Max Borrow Limit)</span>
+                    <span>100% (Liquidation Risk!)</span>
+                  </div>
+                </div>
+
+                <div class="lending-details-grid">
+                  <!-- Control Forms for Lending Simulation -->
+                  <div class="lending-control-box">
+                    <h3>Manual Lending Actions</h3>
+                    <div class="lending-forms">
+                      <div class="lending-input-group">
+                        <label for="lending-amount">Amount (USDC / EURC)</label>
+                        <div class="input-with-button">
+                          <input type="number" id="lending-amount" placeholder="5.00" step="1" min="1" value="5">
+                        </div>
+                      </div>
+                      
+                      <div class="lending-buttons-grid">
+                        <button id="btn-lending-deposit" class="btn btn-success">
+                          <i data-lucide="arrow-up-circle"></i> Deposit USDC
+                        </button>
+                        <button id="btn-lending-borrow" class="btn btn-primary">
+                          <i data-lucide="arrow-down-circle"></i> Borrow EURC
+                        </button>
+                        <button id="btn-lending-repay" class="btn btn-warning">
+                          <i data-lucide="refresh-cw"></i> Repay EURC
+                        </button>
+                        <button id="btn-lending-withdraw" class="btn btn-danger">
+                          <i data-lucide="x-circle"></i> Withdraw USDC
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Lending Contract details -->
+                  <div class="lending-info-box">
+                    <h3>Protocol Configuration</h3>
+                    <div class="lending-info-list">
+                      <div class="info-item">
+                        <span class="lbl">Pool Contract Address</span>
+                        <span class="val font-mono" id="lending-pool-address">0x...</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="lbl">Collateral Asset</span>
+                        <span class="val">USDC (Collateral Ratio: 80% LTV)</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="lbl">Borrowable Asset</span>
+                        <span class="val">EURC (Simulated Oracle Rate: 1.10 EURC / USDC)</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="lbl">Treasury Strategy</span>
+                        <span class="val text-success">Automated Position Safe-Defense</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB: ORDERS (Manual Control Actions) -->
+            <div class="account-tab-content" id="account-tab-orders">
+              <div class="manual-control-row">
+                <div class="control-box">
+                  <h3>Kích Hoạt Chu Kỳ Polling</h3>
+                  <p class="text-muted">Gửi lệnh cưỡng bức kích hoạt chu kỳ polling (Eth Block fetch, USDC balance, transfers và bridges định kỳ) đến Scheduler.</p>
+                  <button id="btn-trigger" class="btn btn-primary btn-full-width">
+                    <i data-lucide="refresh-cw"></i> Kích hoạt Poll Ngay
+                  </button>
+                </div>
+                <div class="control-box text-center">
+                  <h3>Explorers</h3>
+                  <div class="explorer-grid">
+                    <a href="https://testnet.arcscan.app" target="_blank" class="btn btn-dark">
+                      ArcScan Explorer <i data-lucide="external-link"></i>
+                    </a>
+                    <a href="" id="owner-explorer-url" target="_blank" class="btn btn-dark">
+                      Owner Explorer <i data-lucide="external-link"></i>
+                    </a>
+                    <a href="" id="validator-explorer-url" target="_blank" class="btn btn-dark">
+                      Validator Explorer <i data-lucide="external-link"></i>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB: TERMINAL (System logs) -->
+            <div class="account-tab-content" id="account-tab-terminal">
+              <div class="terminal-body-wrapper">
+                <div class="terminal-controls">
+                  <span>console :: arc-worker-bot.log</span>
+                  <button id="btn-clear-logs" class="btn btn-sm btn-dark">
+                    <i data-lucide="trash-2"></i> Xóa Màn Hình
+                  </button>
+                </div>
+                <div class="terminal-console">
+                  <pre id="terminal-pre">Connecting to logs stream...</pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB: NETWORKS (Network Stats) -->
+            <div class="account-tab-content" id="account-tab-networks">
+              <div class="network-stats-row">
+                <div class="network-metric">
+                  <span class="label">Mạng liên kết</span>
+                  <strong class="value text-success">Arc Testnet</strong>
+                </div>
+                <div class="network-metric">
+                  <span class="label">Chain ID</span>
+                  <strong class="value">5042002</strong>
+                </div>
+                <div class="network-metric">
+                  <span class="label">RPC Endpoint</span>
+                  <strong class="value">arc_rpc (Viem Client)</strong>
+                </div>
+                <div class="network-metric">
+                  <span class="label">Lớp Phí Gas</span>
+                  <strong class="value text-primary">USDC Gas Station</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT REGION: Order Book (Recent Tx Flow) & depth -->
+      <div class="right-column">
+        <div class="orderbook-panel">
+          <div class="orderbook-header">
+            <h3>Tx Ledger (Order Book)</h3>
+            <div class="orderbook-tabs">
+              <span class="orderbook-tab active">Book</span>
+              <span class="orderbook-tab">Depth</span>
+              <span class="orderbook-tab">Flow</span>
+            </div>
+          </div>
+          
+          <!-- Bids / Asks ratio indicators -->
+          <div class="ratio-bar-container">
+            <div class="ratio-bar-bids" style="width: 70%">Successful calls (70%)</div>
+            <div class="ratio-bar-asks" style="width: 30%">Failed/Skipped (30%)</div>
+          </div>
+
+          <div class="orderbook-cols-header">
+            <span>ACTION TYPE</span>
+            <span class="text-right">DETAILS</span>
+            <span class="text-right">TX HASH</span>
+          </div>
+
+          <!-- The virtual orderbook entries (Mapped from Transactions) -->
+          <div class="orderbook-entries" id="txs-table-body">
+            <!-- Dynamically populated rows inside orderbook-entry -->
+            <div class="log-placeholder">Đang tải lịch sử giao dịch...</div>
+          </div>
+
+          <!-- Mid market indicator showing Validator Balance -->
+          <div class="mid-market-indicator">
+            <span class="indicator-label">VALIDATOR BALANCE</span>
+            <strong id="validator-usdc-mid" class="indicator-price text-success">$32.00 USDC</strong>
+            <span class="indicator-spread">USDC Gas Reserve</span>
+          </div>
+          
+          <!-- Recent activity live preview log lines -->
+          <div class="live-activity-box">
+            <div class="activity-header">
+              <span>LIVE LOG OUTPUT</span>
+              <span class="status-badge status-success text-xs">active</span>
+            </div>
+            <div class="activity-lines" id="preview-logs">
+              <div class="log-placeholder">Listening for logs...</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Toast Alert -->
+  <div id="toast" class="toast">Đã sao chép!</div>
+
+  <!-- App logic script -->
+  <script src="/app.js"></script>
+</body>
+</html>

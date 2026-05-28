@@ -1,0 +1,40 @@
+{
+  "workers": [
+    {
+      "id": "worker-01",
+      "name": "Arc Worker Bot #1",
+      "description": "Autonomous AI agent for Arc testnet task execution",
+      "enabled": true,
+      "capabilities": [
+        "data_fetch",
+        "contract_interaction",
+        "payment_processing",
+        "reputation_building",
+        "eurc_transfer",
+        "cirbtc_transfer"
+      ],
+      "settings": {
+        "poll_interval_ms": 30000,
+        "max_concurrent_tasks": 3,
+        "job_budget_usdc": 5,
+        "min_balance_usdc": 2,
+        "auto_fund_threshold_usdc": 1,
+        "refuel_amount_usdc": 2,
+        "task_timeout_ms": 300000,
+        "max_retries": 3,
+        "retry_delay_ms": 5000
+      },
+      "identity": {
+        "metadata_uri": "ipfs://bafkreibdi6623n3xpf7ymk62ckb4bo75o3qemwkpfvp5i25j66itxvsoei",
+        "agent_type": "task_executor",
+        "version": "1.0.0"
+      }
+    }
+  ],
+  "global": {
+    "log_level": "info",
+    "runtime_dir": "./runtime",
+    "auto_restart": true,
+    "restart_delay_ms": 10000
+  }
+}

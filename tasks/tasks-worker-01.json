@@ -1,0 +1,434 @@
+{
+  "worker_id": "worker-01",
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "id": "task-001",
+      "name": "Fetch Arc Block Stats",
+      "type": "data_fetch",
+      "description": "Fetch latest block number and gas stats from Arc testnet",
+      "enabled": true,
+      "schedule": "every_poll",
+      "priority": 1,
+      "params": {
+        "endpoint": "arc_rpc",
+        "method": "eth_blockNumber",
+        "save_result": true
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-002",
+      "name": "Check USDC Balance",
+      "type": "contract_interaction",
+      "description": "Read worker wallet USDC balance from Arc testnet",
+      "enabled": true,
+      "schedule": "every_poll",
+      "priority": 1,
+      "params": {
+        "contract": "usdc",
+        "function": "balanceOf",
+        "save_result": true
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-003",
+      "name": "Register Agent Identity",
+      "type": "onchain_identity",
+      "description": "Register worker as AI agent via ERC-8004 IdentityRegistry",
+      "enabled": true,
+      "schedule": "once",
+      "priority": 10,
+      "params": {
+        "contract": "identity_registry",
+        "function": "register",
+        "metadata_uri": "ipfs://bafkreibdi6623n3xpf7ymk62ckb4bo75o3qemwkpfvp5i25j66itxvsoei"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-004",
+      "name": "Create ERC-8183 Job",
+      "type": "payment_processing",
+      "description": "Create an on-chain job, fund escrow with USDC, submit deliverable",
+      "enabled": true,
+      "schedule": "once",
+      "priority": 5,
+      "params": {
+        "contract": "agentic_commerce",
+        "job_budget_usdc": 5,
+        "job_description": "Arc Worker Bot automated task execution",
+        "expire_seconds": 3600
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-005",
+      "name": "Record Reputation",
+      "type": "reputation_building",
+      "description": "Record successful task completion to ReputationRegistry",
+      "enabled": true,
+      "schedule": "every_poll",
+      "priority": 3,
+      "params": {
+        "contract": "reputation_registry",
+        "function": "giveFeedback",
+        "score": 95,
+        "tag": "successful_execution"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-006",
+      "name": "Transfer USDC Owner→Validator",
+      "type": "usdc_transfer",
+      "description": "Gửi 1 USDC từ owner sang validator để tăng volume giao dịch",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 4,
+      "params": {
+        "direction": "owner_to_validator",
+        "amount": "1"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-007",
+      "name": "Transfer USDC Validator→Owner",
+      "type": "usdc_transfer",
+      "description": "Gửi 1 USDC từ validator trả lại owner",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 4,
+      "params": {
+        "direction": "validator_to_owner",
+        "amount": "1"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-008",
+      "name": "Check EURC Balance",
+      "type": "eurc_balance",
+      "description": "Đọc balance EURC — tăng contract interaction đa dạng",
+      "enabled": true,
+      "schedule": "every_5_polls",
+      "priority": 2,
+      "params": {
+        "contract": "eurc",
+        "function": "balanceOf"
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-009",
+      "name": "Multicall3 Batch Read",
+      "type": "multicall_read",
+      "description": "Batch đọc USDC+EURC balance cùng lúc qua Multicall3 — 1 tx nhiều interaction",
+      "enabled": true,
+      "schedule": "every_5_polls",
+      "priority": 2,
+      "params": {
+        "contract": "multicall3",
+        "calls": ["usdc_balance", "eurc_balance", "block_number"]
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-010",
+      "name": "Create Second ERC-8183 Job",
+      "type": "payment_processing",
+      "description": "Job thứ 2 với budget nhỏ hơn để tăng số lần settlement",
+      "enabled": true,
+      "schedule": "once",
+      "priority": 5,
+      "params": {
+        "contract": "agentic_commerce",
+        "job_budget_usdc": 2,
+        "job_description": "Arc Worker Bot - secondary task execution round 2",
+        "expire_seconds": 3600
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false },
+      "dependencies": []
+    },
+    {
+      "id": "task-011",
+      "name": "Transfer EURC Owner→Validator",
+      "type": "eurc_transfer",
+      "description": "Gửi 1 EURC từ owner sang validator để tăng tính đa dạng giao dịch on-chain",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 4,
+      "params": {
+        "direction": "owner_to_validator",
+        "amount": "1"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-012",
+      "name": "Transfer EURC Validator→Owner",
+      "type": "eurc_transfer",
+      "description": "Gửi 1 EURC từ validator trả lại owner",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 4,
+      "params": {
+        "direction": "validator_to_owner",
+        "amount": "1"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-013",
+      "name": "Check cirBTC Balance",
+      "type": "cirbtc_balance",
+      "description": "Đọc balance cirBTC — tăng tương tác token đa dạng trên chain",
+      "enabled": true,
+      "schedule": "every_5_polls",
+      "priority": 2,
+      "params": {
+        "contract": "cirbtc",
+        "function": "balanceOf"
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-014",
+      "name": "Transfer cirBTC Owner→Validator",
+      "type": "cirbtc_transfer",
+      "description": "Gửi 0.00001 cirBTC từ owner sang validator",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 4,
+      "params": {
+        "direction": "owner_to_validator",
+        "amount": "0.00001"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-015",
+      "name": "Transfer cirBTC Validator→Owner",
+      "type": "cirbtc_transfer",
+      "description": "Gửi 0.00001 cirBTC từ validator trả lại owner",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 4,
+      "params": {
+        "direction": "validator_to_owner",
+        "amount": "0.00001"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-016",
+      "name": "Swap USDC to EURC",
+      "type": "token_swap",
+      "description": "Hoán đổi 1 USDC sang EURC trên Arc Testnet",
+      "enabled": true,
+      "schedule": "every_15_polls",
+      "priority": 4,
+      "params": {
+        "amount": "1.00",
+        "tokenOut": "EURC"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-017",
+      "name": "CCTP Bridge USDC Arc→Base",
+      "type": "cctp_bridge",
+      "description": "Bắc cầu 1 USDC từ Arc Testnet sang Base Sepolia qua CCTP",
+      "enabled": false,
+      "schedule": "every_20_polls",
+      "priority": 4,
+      "params": {
+        "amount": "1.00",
+        "destChain": "Base_Sepolia"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-018",
+      "name": "Send Random stablecoin",
+      "type": "random_transfer",
+      "description": "Gửi ngẫu nhiên từ 0.001 đến 0.01 stablecoin (USDC, EURC, cirBTC) tới danh sách ví mục tiêu",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 3,
+      "params": {
+        "token": "USDC",
+        "min_amount": "0.001",
+        "max_amount": "0.01",
+        "addresses": [
+          "0x99588cb0275ffccb0825a7ab4e98cc8cb6a9d30c",
+          "0x37583df7a477aa5c41bf2754044cca554a982933",
+          "0xefa75451a8fb818ec73b3c2985692802701f9d8c",
+          "0x174f183e9438158ee305Df6ad972345024DB006c"
+        ]
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-019",
+      "name": "Deploy Shadow Recall Token",
+      "type": "deploy_token",
+      "description": "Deploy hợp đồng ERC-20 Token riêng mang tên Shadow Recall Token (SHADOW) qua Circle Contracts",
+      "enabled": true,
+      "schedule": "once",
+      "priority": 6,
+      "params": {
+        "name": "Shadow Recall Token",
+        "symbol": "SHADOW"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-020",
+      "name": "Deploy Arc Worker Sentinel NFT",
+      "type": "deploy_nft",
+      "description": "Deploy hợp đồng ERC-721 NFT riêng mang tên Arc Worker Sentinel (SENTINEL) qua Circle Contracts",
+      "enabled": true,
+      "schedule": "once",
+      "priority": 6,
+      "params": {
+        "name": "Arc Worker Sentinel",
+        "symbol": "SENTINEL"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-021",
+      "name": "Say GM On-Chain",
+      "type": "say_gm",
+      "description": "Tự động gửi lời chào GM lên Smart Contract trên Arc Testnet",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 3,
+      "params": {
+        "contractAddress": "0x45940adebc36c323adbcaeb6a71b755107abf880",
+        "message": "GM from Arc Worker Bot! 🤖"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
+    },
+    {
+      "id": "task-022",
+      "name": "Execute x402 Nanopayment",
+      "type": "x402_nanopayment",
+      "description": "Tự động gửi thanh toán siêu nhỏ gasless USDC qua chuẩn x402",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 3,
+      "params": {
+        "url": "http://localhost:3000/api/premium/quote",
+        "method": "GET",
+        "amountToDeposit": "1.00"
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-023",
+      "name": "Execute x402 Dataset Nanopayment",
+      "type": "x402_nanopayment",
+      "description": "Tự động thanh toán và tải bộ dữ liệu cao cấp bằng USDC chuẩn x402 ($0.01 USDC)",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 3,
+      "params": {
+        "url": "http://localhost:3000/api/premium/dataset",
+        "method": "GET",
+        "amountToDeposit": "1.00"
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-024",
+      "name": "Execute x402 Compute Nanopayment",
+      "type": "x402_nanopayment",
+      "description": "Tự động thanh toán và thực hiện phân tích văn bản qua API compute bằng USDC chuẩn x402 ($0.0003 USDC)",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 3,
+      "params": {
+        "url": "http://localhost:3000/api/premium/compute",
+        "method": "POST",
+        "body": {
+          "text": "Hello, this is a premium computational word counter service testing nanopayments!"
+        },
+        "amountToDeposit": "1.00"
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-025",
+      "name": "Solve x402 Premium Puzzle",
+      "type": "x402_puzzle_solver",
+      "description": "Tự động gửi chuỗi thanh toán EIP-3009 và giải đố lấy rương kho báu ($0.025 USDC tổng cộng)",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 3,
+      "params": {
+        "url": "http://localhost:3000/api/premium/puzzle",
+        "amountToDeposit": "1.00"
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-026",
+      "name": "Auto Recycle EURC to USDC",
+      "type": "auto_recycle",
+      "description": "Tự động hoán đổi EURC sang USDC để tái thiết thanh khoản khi số dư USDC của Owner < 20 USDC",
+      "enabled": true,
+      "schedule": "every_5_polls",
+      "priority": 4,
+      "params": {
+        "minUSDC": "20.00",
+        "swapAmount": "50.00"
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-027",
+      "name": "Deposit USDC Collateral",
+      "type": "lending_borrowing",
+      "description": "Thế chấp 5 USDC vào Lending Pool để khởi tạo vị thế hạn mức tín dụng",
+      "enabled": true,
+      "schedule": "once",
+      "priority": 5,
+      "params": {
+        "action": "deposit",
+        "amount": "5.00"
+      },
+      "deliverable": { "type": "json", "hash_content": false }
+    },
+    {
+      "id": "task-028",
+      "name": "Borrow EURC Credit Line",
+      "type": "lending_borrowing",
+      "description": "Thực hiện vay 4 EURC từ Lending Pool dựa trên tài sản thế chấp USDC",
+      "enabled": true,
+      "schedule": "once",
+      "priority": 4,
+      "params": {
+        "action": "borrow",
+        "amount": "4.00"
+      },
+      "deliverable": { "type": "json", "hash_content": false }
+    },
+    {
+      "id": "task-029",
+      "name": "Auto Manage Lending Position",
+      "type": "lending_borrowing",
+      "description": "Tự động quản lý tỉ lệ thế chấp (LTV) và bảo toàn Health Factor của quỹ",
+      "enabled": true,
+      "schedule": "every_5_polls",
+      "priority": 4,
+      "params": {
+        "action": "auto_manage"
+      },
+      "deliverable": { "type": "json", "hash_content": true }
+    }
+  ]
+}
