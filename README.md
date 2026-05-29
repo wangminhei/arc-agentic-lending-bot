@@ -90,11 +90,12 @@ docker-compose logs -f arc-worker-01
 | Contract            | Address                                      |
 |---------------------|----------------------------------------------|
 | USDC                | `0x3600000000000000000000000000000000000000`  |
+| cirBTC              | `0xf0c4a4ce82a5746abaad9425360ab04fbba432bf`  |
 | AgenticCommerce     | `0x0747EEf0706327138c69792bF28Cd525089e4583`  |
 | IdentityRegistry    | `0x8004A818BFB912233c491871b3d84c89A494BD9e`  |
 | ReputationRegistry  | `0x8004B663056A597Dffe9eCcC1965A193B7388713`  |
 | ValidationRegistry  | `0x8004Cb1BF31DAf7788923b405b754f57acEB4272`  |
-| AgenticLendingPool  | `0xedcdc17827a787ef5802335d1ac24df5764fa858`  | (Deployed Contract)
+| MultiCollateralPool | `0xe4e69d8db71aa9de6ea9f7733bd8226ff2259633`  |
 
 ## Task Types
 
@@ -105,25 +106,27 @@ docker-compose logs -f arc-worker-01
 | `onchain_identity`     | ERC-8004 register AI agent identity          |
 | `payment_processing`   | ERC-8183 full job lifecycle (5 USDC escrow)  |
 | `reputation_building`  | ERC-8004 giveFeedback on ReputationRegistry  |
-| `lending_borrowing`    | Deposit USDC collateral, borrow EURC, auto-manage health factor |
+| `lending_borrowing`    | Deposit USDC/cirBTC collateral, borrow EURC, auto-manage health factor |
 
-## Agentic Lending & Borrowing (Tính năng nâng cao)
+## Agentic Multi-Collateral & Auto-Hedging (Tính năng nâng cao)
 
-Hệ thống tích hợp một giao thức **Lending & Borrowing** thông minh, quản trị dòng tiền tự động (Machine-Speed Treasury):
+Hệ thống tích hợp một giao thức **Multi-Collateral Lending & Borrowing** thông minh, quản trị rủi ro thế chấp tự động bằng AI Agent (Auto-Hedging):
 
-1. **Smart Contract (`AgenticLendingPool.sol`)**:
-   * Địa chỉ: `0xedcdc17827a787ef5802335d1ac24df5764fa858`
-   * Cho phép nạp USDC làm tài sản thế chấp (Collateral), vay EURC với hạn mức tối đa **80% LTV** (tỷ giá cố định 1 USDC = 1.10 EURC).
-   * Hỗ trợ rút tài sản thế chấp và hoàn trả EURC để giảm nợ.
+1. **Smart Contract (`AgenticMultiCollateralPool.sol`)**:
+   * Địa chỉ: `0xe4e69d8db71aa9de6ea9f7733bd8226ff2259633`
+   * Cho phép thế chấp song song **USDC (6 decimals)** và **cirBTC (8 decimals)** để vay **EURC (6 decimals)** với hạn mức **80% LTV** (tỷ giá cố định 1 USD = 1.10 EURC).
+   * Tích hợp **Simulated Price Oracle** cho Bitcoin trên chuỗi, cho phép cập nhật giá BTC thông qua hàm `setBTCPrice(uint256)`.
 
-2. **Cơ chế Tự động Phòng vệ (Credit Line Auto-Defense)**:
-   * Tích hợp tác vụ tự động giám sát trạng thái tài khoản (`auto_manage`).
-   * Khi **Health Factor (Hệ số an toàn)** giảm xuống dưới **`1.20`** (nguy cơ thanh lý cao do vay nhiều hoặc rút bớt tài sản thế chấp), bot sẽ tự động rút **`5.00 USDC`** từ ví Treasury nạp thêm vào hợp đồng thông minh để tăng Health Factor lên mức an toàn (`2.20`).
+2. **Cơ chế Tự động Phòng thủ (Credit Line Auto-Hedging)**:
+   * AI Agent chạy tác vụ giám sát trạng thái tài khoản liên tục (`auto_manage` chạy mỗi poll).
+   * Khi **Health Factor (Hệ số an toàn)** giảm xuống dưới **`1.20`** (do biến động giá BTC sụt giảm mạnh làm giảm giá trị tài sản thế chấp cirBTC), bot sẽ tự động nạp thêm **`5.00 USDC`** từ ví Treasury vào hợp đồng thông minh để restructuring thế chấp, đưa Health Factor trở lại mức an toàn.
 
-3. **Giao diện Glassmorphic Dashboard Web**:
-   * Cập nhật Tab **Lending & Borrowing** trực quan tại cổng `http://localhost:3005`.
-   * Hiển thị thời gian thực các chỉ số tài chính: *USDC Collateral, EURC Borrowed, Max Borrow Power, LTV Progress Bar, và Health Factor*.
-   * Cung cấp bảng điều khiển thủ công cho các thao tác: *Deposit, Borrow, Repay, Withdraw*.
+3. **Dashboard Mô phỏng Biến động Giá BTC**:
+   * Giao diện Dashboard tại `http://localhost:3005` hiển thị thời gian thực các chỉ số thế chấp của USDC, cirBTC, giá BTC hiện tại và Health Factor.
+   * Tích hợp bảng điều khiển mô phỏng giá:
+     * Nút **"Crash BTC Price ($60,000)"** cập nhật giá BTC giảm xuống $60,000 trên chuỗi, đẩy Health Factor xuống mức nguy hiểm (1.15).
+     * AI Agent sẽ tự động phát hiện và thực thi giao dịch nạp 5.00 USDC cứu vị thế, khôi phục Health Factor lên an toàn (1.43) trong vòng 30 giây.
+     * Nút **"Restore BTC Price ($90,000)"** khôi phục giá trị BTC trở lại trạng thái ban đầu.
 
 ## Runtime Files
 
