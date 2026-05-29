@@ -323,12 +323,16 @@
                     <strong class="val text-success" id="lending-collateral">0.00 USDC</strong>
                   </div>
                   <div class="lending-stat-box">
-                    <span class="lbl">EURC BORROWED</span>
-                    <strong class="val text-primary" id="lending-borrowed">0.00 EURC</strong>
+                    <span class="lbl">cirBTC COLLATERAL</span>
+                    <strong class="val text-info" id="lending-cirbtc-collateral">0.00000000 BTC</strong>
                   </div>
                   <div class="lending-stat-box">
-                    <span class="lbl">MAX BORROW CAPACITY</span>
-                    <strong class="val text-warning" id="lending-borrow-power">0.00 EURC</strong>
+                    <span class="lbl">TOTAL COLLATERAL USD</span>
+                    <strong class="val text-warning" id="lending-total-collateral">$0.00 USD</strong>
+                  </div>
+                  <div class="lending-stat-box">
+                    <span class="lbl">EURC BORROWED</span>
+                    <strong class="val text-primary" id="lending-borrowed">0.00 EURC</strong>
                   </div>
                   <div class="lending-stat-box">
                     <span class="lbl">HEALTH FACTOR</span>
@@ -356,49 +360,72 @@
                   <div class="lending-control-box">
                     <h3>Manual Lending Actions</h3>
                     <div class="lending-forms">
-                      <div class="lending-input-group">
-                        <label for="lending-amount">Amount (USDC / EURC)</label>
-                        <div class="input-with-button">
-                          <input type="number" id="lending-amount" placeholder="5.00" step="1" min="1" value="5">
+                      <div class="lending-input-row" style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <div class="lending-input-group" style="flex: 1;">
+                          <label for="lending-token-select">Select Token</label>
+                          <select id="lending-token-select" class="form-control" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white;">
+                            <option value="USDC">USDC (Collateral)</option>
+                            <option value="cirBTC">cirBTC (Collateral)</option>
+                          </select>
+                        </div>
+                        <div class="lending-input-group" style="flex: 1;">
+                          <label for="lending-amount">Amount</label>
+                          <input type="number" id="lending-amount" class="form-control" placeholder="5.00" step="0.0001" min="0.00000001" value="5" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white;">
                         </div>
                       </div>
                       
-                      <div class="lending-buttons-grid">
+                      <div class="lending-buttons-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
                         <button id="btn-lending-deposit" class="btn btn-success">
-                          <i data-lucide="arrow-up-circle"></i> Deposit USDC
-                        </button>
-                        <button id="btn-lending-borrow" class="btn btn-primary">
-                          <i data-lucide="arrow-down-circle"></i> Borrow EURC
-                        </button>
-                        <button id="btn-lending-repay" class="btn btn-warning">
-                          <i data-lucide="refresh-cw"></i> Repay EURC
+                          <i data-lucide="arrow-up-circle"></i> Deposit
                         </button>
                         <button id="btn-lending-withdraw" class="btn btn-danger">
-                          <i data-lucide="x-circle"></i> Withdraw USDC
+                          <i data-lucide="x-circle"></i> Withdraw
+                        </button>
+                        <button id="btn-lending-borrow" class="btn btn-primary" style="grid-column: span 2;">
+                          <i data-lucide="arrow-down-circle"></i> Borrow EURC (Amount in EURC)
+                        </button>
+                        <button id="btn-lending-repay" class="btn btn-warning" style="grid-column: span 2;">
+                          <i data-lucide="refresh-cw"></i> Repay EURC (Amount in EURC)
                         </button>
                       </div>
                     </div>
                   </div>
+
+                  <!-- Oracle simulator box -->
+                  <div class="lending-control-box">
+                    <h3>BTC Price Oracle Simulator</h3>
+                    <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 15px; line-height: 1.4;">
+                      Simulate market movements on-chain. Crashing the price of Bitcoin will lower the collateral valuation, driving the Health Factor down and triggering the AI Agent to automatically defend the position.
+                    </p>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                      <button id="btn-oracle-crash" class="btn btn-danger btn-full-width" style="padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                        <i data-lucide="trending-down"></i> Crash BTC Price ($60,000)
+                      </button>
+                      <button id="btn-oracle-restore" class="btn btn-success btn-full-width" style="padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                        <i data-lucide="trending-up"></i> Restore BTC Price ($90,000)
+                      </button>
+                    </div>
+                  </div>
                   
                   <!-- Lending Contract details -->
-                  <div class="lending-info-box">
-                    <h3>Protocol Configuration</h3>
+                  <div class="lending-info-box" style="grid-column: span 2;">
+                    <h3>Multi-Collateral configuration</h3>
                     <div class="lending-info-list">
                       <div class="info-item">
                         <span class="lbl">Pool Contract Address</span>
                         <span class="val font-mono" id="lending-pool-address">0x...</span>
                       </div>
                       <div class="info-item">
-                        <span class="lbl">Collateral Asset</span>
-                        <span class="val">USDC (Collateral Ratio: 80% LTV)</span>
+                        <span class="lbl">Simulated BTC Price (Oracle)</span>
+                        <span class="val text-info" id="lending-btc-price">$90,000.00</span>
                       </div>
                       <div class="info-item">
-                        <span class="lbl">Borrowable Asset</span>
-                        <span class="val">EURC (Simulated Oracle Rate: 1.10 EURC / USDC)</span>
+                        <span class="lbl">Max Borrow Capacity</span>
+                        <span class="val text-warning" id="lending-borrow-power">0.00 EURC</span>
                       </div>
                       <div class="info-item">
-                        <span class="lbl">Treasury Strategy</span>
-                        <span class="val text-success">Automated Position Safe-Defense</span>
+                        <span class="lbl">Treasury Risk Strategy</span>
+                        <span class="val text-success">Automated Position Hedging (USDC Auto-Deposit if Health Factor < 1.20)</span>
                       </div>
                     </div>
                   </div>

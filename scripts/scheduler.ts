@@ -358,21 +358,24 @@ class Scheduler {
           const contractsPath = path.resolve(`./runtime/${WORKER_ID}/state/contracts.json`);
           if (fs.existsSync(contractsPath)) {
             const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf-8"));
-            const lendingPoolAddress = contracts.lending_pool;
+            const lendingPoolAddress = contracts.multi_collateral_pool || contracts.lending_pool;
             if (lendingPoolAddress && wallets.owner?.address) {
               const publicClient = this.taskExecutor.publicClient;
-              const [collateralUSDC, borrowedEURC, maxBorrowEURC, healthFactor] = await publicClient.readContract({
+              const [collateralUSDC, collateralCirBTC, borrowedEURC, currentBtcPrice, totalCollateralUSD, maxBorrowEURC, healthFactor] = await publicClient.readContract({
                 address: lendingPoolAddress as Address,
                 abi: LENDING_POOL_ABI,
                 functionName: "getAccountData",
                 args: [wallets.owner.address as Address],
-              }) as [bigint, bigint, bigint, bigint];
+              }) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint];
               
               const hf = Number(healthFactor);
               lendingData = {
                 poolAddress: lendingPoolAddress,
                 collateralUSDC: formatUnits(collateralUSDC, 6),
+                collateralCirBTC: formatUnits(collateralCirBTC, 8),
                 borrowedEURC: formatUnits(borrowedEURC, 6),
+                currentBtcPrice: formatUnits(currentBtcPrice, 6),
+                totalCollateralUSD: formatUnits(totalCollateralUSD, 6),
                 maxBorrowEURC: formatUnits(maxBorrowEURC, 6),
                 healthFactor: hf === 99999 ? "Safe" : (hf / 100).toFixed(2)
               };
@@ -393,7 +396,7 @@ class Scheduler {
         req.on("end", async () => {
           try {
             const body = JSON.parse(bodyStr);
-            const { action, amount } = body;
+            const { action, amount, token } = body;
             if (!action || !amount) {
               res.writeHead(400, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ success: false, error: "Missing action or amount" }));
@@ -408,17 +411,17 @@ class Scheduler {
             }
             const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
 
-            this.logger.info(`[UI Request] Manual Lending action triggered: ${action} ${amount}`);
+            this.logger.info(`[UI Request] Manual Lending action triggered: ${action} ${amount} ${token || "USDC"}`);
             
             const manualTask: Task = {
               id: `manual-lending-${Date.now()}`,
               name: `Manual UI ${action}`,
               type: "lending_borrowing",
-              description: `Manual UI initiated ${action} of ${amount}`,
+              description: `Manual UI initiated ${action} of ${amount} ${token || "USDC"}`,
               enabled: true,
               schedule: "manual",
               priority: 10,
-              params: { action, amount },
+              params: { action, amount, token },
               deliverable: { type: "json", hash_content: false }
             };
 
@@ -426,6 +429,63 @@ class Scheduler {
             
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify(result));
+          } catch (err: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+        return;
+      }
+
+      // API: Simulated Oracle price update
+      if (url === "/api/lending/oracle" && method === "POST") {
+        let bodyStr = "";
+        req.on("data", (chunk) => { bodyStr += chunk; });
+        req.on("end", async () => {
+          try {
+            const body = JSON.parse(bodyStr);
+            const { price } = body; // Price in USD, e.g. 60000 or 90000
+            if (!price) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Missing price parameter" }));
+              return;
+            }
+
+            const contractsPath = path.resolve(`./runtime/${WORKER_ID}/state/contracts.json`);
+            if (!fs.existsSync(contractsPath)) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "contracts.json not found" }));
+              return;
+            }
+            const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf-8"));
+            const lendingPoolAddress = contracts.multi_collateral_pool;
+            if (!lendingPoolAddress) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Multi-Collateral Pool not deployed" }));
+              return;
+            }
+
+            const walletsPath = path.resolve(`./runtime/${WORKER_ID}/state/wallets.json`);
+            if (!fs.existsSync(walletsPath)) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Wallets not initialized" }));
+              return;
+            }
+            const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
+
+            const priceRaw = BigInt(price) * 10n ** 6n;
+            this.logger.info(`[UI Request] Simulating BTC price oracle update: $${price}`);
+
+            const txHash = await this.walletManager.executeContract(
+              wallets.owner.address,
+              lendingPoolAddress,
+              "setBTCPrice(uint256)",
+              [priceRaw.toString()],
+              "Update BTC Oracle Price"
+            );
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true, price: price.toString(), txHash }));
           } catch (err: any) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: err.message }));

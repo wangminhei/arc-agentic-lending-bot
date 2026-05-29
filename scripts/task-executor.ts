@@ -83,7 +83,10 @@ export const LENDING_POOL_ABI = [
     inputs: [{ name: "user", type: "address" }],
     outputs: [
       { name: "collateralUSDC", type: "uint256" },
+      { name: "collateralCirBTC", type: "uint256" },
       { name: "borrowedEURC", type: "uint256" },
+      { name: "currentBtcPrice", type: "uint256" },
+      { name: "totalCollateralUSD", type: "uint256" },
       { name: "maxBorrowEURC", type: "uint256" },
       { name: "healthFactor", type: "uint256" },
     ],
@@ -1266,7 +1269,7 @@ export class TaskExecutor {
       throw new Error("contracts.json not found! Lending Pool not deployed.");
     }
     const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf8"));
-    const lendingPoolAddress = contracts.lending_pool;
+    const lendingPoolAddress = contracts.multi_collateral_pool || contracts.lending_pool;
     if (!lendingPoolAddress) {
       throw new Error("Lending pool address not found in contracts.json");
     }
@@ -1274,26 +1277,50 @@ export class TaskExecutor {
     this.logger.info(`  [Lending & Borrowing] Action: ${action} | Pool: ${lendingPoolAddress}`);
 
     if (action === "deposit") {
-      const amountRaw = parseUnits(amountStr, 6);
-      this.logger.info(`  [Lending] Approving ${amountStr} USDC to LendingPool...`);
-      await this.walletManager.executeContract(
-        wallets.owner.address,
-        USDC_CONTRACT,
-        "approve(address,uint256)",
-        [lendingPoolAddress, amountRaw.toString()],
-        "Approve USDC to LendingPool"
-      );
+      const isBTC = task.params.token?.toLowerCase() === "cirbtc";
+      if (isBTC) {
+        const amountRaw = parseUnits(amountStr, 8);
+        this.logger.info(`  [Lending] Approving ${amountStr} cirBTC to MultiCollateralPool...`);
+        await this.walletManager.executeContract(
+          wallets.owner.address,
+          CIRBTC_CONTRACT,
+          "approve(address,uint256)",
+          [lendingPoolAddress, amountRaw.toString()],
+          "Approve cirBTC to MultiCollateralPool"
+        );
 
-      this.logger.info(`  [Lending] Depositing ${amountStr} USDC as collateral...`);
-      const txHash = await this.walletManager.executeContract(
-        wallets.owner.address,
-        lendingPoolAddress,
-        "depositCollateral(uint256)",
-        [amountRaw.toString()],
-        "Deposit USDC Collateral"
-      );
+        this.logger.info(`  [Lending] Depositing ${amountStr} cirBTC as collateral...`);
+        const txHash = await this.walletManager.executeContract(
+          wallets.owner.address,
+          lendingPoolAddress,
+          "depositCirBTC(uint256)",
+          [amountRaw.toString()],
+          "Deposit cirBTC Collateral"
+        );
 
-      return { action, amount: amountStr, txHash, timestamp: new Date().toISOString() };
+        return { action, token: "cirBTC", amount: amountStr, txHash, timestamp: new Date().toISOString() };
+      } else {
+        const amountRaw = parseUnits(amountStr, 6);
+        this.logger.info(`  [Lending] Approving ${amountStr} USDC to MultiCollateralPool...`);
+        await this.walletManager.executeContract(
+          wallets.owner.address,
+          USDC_CONTRACT,
+          "approve(address,uint256)",
+          [lendingPoolAddress, amountRaw.toString()],
+          "Approve USDC to MultiCollateralPool"
+        );
+
+        this.logger.info(`  [Lending] Depositing ${amountStr} USDC as collateral...`);
+        const txHash = await this.walletManager.executeContract(
+          wallets.owner.address,
+          lendingPoolAddress,
+          "depositUSDC(uint256)",
+          [amountRaw.toString()],
+          "Deposit USDC Collateral"
+        );
+
+        return { action, token: "USDC", amount: amountStr, txHash, timestamp: new Date().toISOString() };
+      }
     }
 
     if (action === "borrow") {
@@ -1334,41 +1361,59 @@ export class TaskExecutor {
     }
 
     if (action === "withdraw") {
-      const amountRaw = parseUnits(amountStr, 6);
-      this.logger.info(`  [Lending] Withdrawing ${amountStr} USDC collateral...`);
-      const txHash = await this.walletManager.executeContract(
-        wallets.owner.address,
-        lendingPoolAddress,
-        "withdrawCollateral(uint256)",
-        [amountRaw.toString()],
-        "Withdraw USDC Collateral"
-      );
+      const isBTC = task.params.token?.toLowerCase() === "cirbtc";
+      if (isBTC) {
+        const amountRaw = parseUnits(amountStr, 8);
+        this.logger.info(`  [Lending] Withdrawing ${amountStr} cirBTC collateral...`);
+        const txHash = await this.walletManager.executeContract(
+          wallets.owner.address,
+          lendingPoolAddress,
+          "withdrawCirBTC(uint256)",
+          [amountRaw.toString()],
+          "Withdraw cirBTC Collateral"
+        );
 
-      return { action, amount: amountStr, txHash, timestamp: new Date().toISOString() };
+        return { action, token: "cirBTC", amount: amountStr, txHash, timestamp: new Date().toISOString() };
+      } else {
+        const amountRaw = parseUnits(amountStr, 6);
+        this.logger.info(`  [Lending] Withdrawing ${amountStr} USDC collateral...`);
+        const txHash = await this.walletManager.executeContract(
+          wallets.owner.address,
+          lendingPoolAddress,
+          "withdrawUSDC(uint256)",
+          [amountRaw.toString()],
+          "Withdraw USDC Collateral"
+        );
+
+        return { action, token: "USDC", amount: amountStr, txHash, timestamp: new Date().toISOString() };
+      }
     }
 
     if (action === "auto_manage") {
       this.logger.info(`  [Lending] Querying account position data...`);
       
-      const [collateralUSDC, borrowedEURC, maxBorrowEURC, healthFactor] = await this.publicClient.readContract({
+      const [collateralUSDC, collateralCirBTC, borrowedEURC, currentBtcPrice, totalCollateralUSD, maxBorrowEURC, healthFactor] = await this.publicClient.readContract({
         address: lendingPoolAddress as Address,
         abi: LENDING_POOL_ABI,
         functionName: "getAccountData",
         args: [wallets.owner.address as Address],
-      }) as [bigint, bigint, bigint, bigint];
+      }) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint];
 
-      const collateral = parseFloat(formatUnits(collateralUSDC, 6));
-      const borrowed = parseFloat(formatUnits(borrowedEURC, 6));
-      const maxBorrow = parseFloat(formatUnits(maxBorrowEURC, 6));
+      const collateralUSDCVal = parseFloat(formatUnits(collateralUSDC, 6));
+      const collateralCirBTCVal = parseFloat(formatUnits(collateralCirBTC, 8));
+      const borrowedVal = parseFloat(formatUnits(borrowedEURC, 6));
+      const btcPriceVal = parseFloat(formatUnits(currentBtcPrice, 6));
+      const totalCollVal = parseFloat(formatUnits(totalCollateralUSD, 6));
+      const maxBorrowVal = parseFloat(formatUnits(maxBorrowEURC, 6));
       const hf = Number(healthFactor);
 
-      this.logger.info(`  [Lending Position] Collateral: ${collateral} USDC | Borrowed: ${borrowed} EURC | Max Borrow: ${maxBorrow} EURC | HF: ${hf === 99999 ? "Safe" : (hf / 100).toFixed(2)}`);
+      this.logger.info(`  [Lending Position] USDC Collateral: ${collateralUSDCVal} | cirBTC Collateral: ${collateralCirBTCVal} (Price: $${btcPriceVal.toLocaleString()}) | Total Collateral: $${totalCollVal.toFixed(2)} | Borrowed: ${borrowedVal} EURC | Max Borrow: ${maxBorrowVal} EURC | HF: ${hf === 99999 ? "Safe" : (hf / 100).toFixed(2)}`);
 
       let txHash: string | undefined;
       let executedAction = "none";
       let autoAmount = "0";
 
-      if (hf < 120 && borrowed > 0) {
+      if (hf < 120 && borrowedVal > 0) {
         this.logger.warn(`  [Lending Warning] Health Factor is low (${(hf / 100).toFixed(2)} < 1.20). Auto-defending position...`);
         const ownerBal = await this.walletManager.getUSDCBalance(wallets.owner.address);
         if (parseFloat(ownerBal.usdc) >= 5.0) {
@@ -1388,7 +1433,7 @@ export class TaskExecutor {
           txHash = await this.walletManager.executeContract(
             wallets.owner.address,
             lendingPoolAddress,
-            "depositCollateral(uint256)",
+            "depositUSDC(uint256)",
             [amountRaw.toString()],
             "Deposit USDC Collateral"
           );
@@ -1396,12 +1441,12 @@ export class TaskExecutor {
           this.logger.error(`  [Lending Auto-Defense Failed] Low USDC balance (${ownerBal.usdc} USDC) to deposit more collateral!`);
         }
       } 
-      else if ((hf > 300 || hf === 99999) && collateral < 10.0) {
+      else if ((hf > 300 || hf === 99999) && collateralUSDCVal < 10.0 && collateralCirBTCVal === 0.0) {
         const ownerBal = await this.walletManager.getUSDCBalance(wallets.owner.address);
         if (parseFloat(ownerBal.usdc) > 50.0) {
           executedAction = "deposit";
           autoAmount = "10.00";
-          this.logger.info(`  [Lending Auto-Deposit] Collateral is low (${collateral} USDC). Depositing ${autoAmount} USDC to prepare credit line...`);
+          this.logger.info(`  [Lending Auto-Deposit] Collateral is low (${collateralUSDCVal} USDC). Depositing ${autoAmount} USDC to prepare credit line...`);
 
           const amountRaw = parseUnits(autoAmount, 6);
           await this.walletManager.executeContract(
@@ -1415,7 +1460,7 @@ export class TaskExecutor {
           txHash = await this.walletManager.executeContract(
             wallets.owner.address,
             lendingPoolAddress,
-            "depositCollateral(uint256)",
+            "depositUSDC(uint256)",
             [amountRaw.toString()],
             "Deposit USDC Collateral"
           );
@@ -1426,9 +1471,12 @@ export class TaskExecutor {
         action: "auto_manage",
         executedAction,
         autoAmount,
-        collateralUSDC: collateral.toString(),
-        borrowedEURC: borrowed.toString(),
-        maxBorrowEURC: maxBorrow.toString(),
+        collateralUSDC: collateralUSDCVal.toString(),
+        collateralCirBTC: collateralCirBTCVal.toString(),
+        borrowedEURC: borrowedVal.toString(),
+        currentBtcPrice: btcPriceVal.toString(),
+        totalCollateralUSD: totalCollVal.toString(),
+        maxBorrowEURC: maxBorrowVal.toString(),
         healthFactor: hf.toString(),
         txHash,
         timestamp: new Date().toISOString()
@@ -1437,6 +1485,7 @@ export class TaskExecutor {
 
     throw new Error(`Unsupported lending action: ${action}`);
   }
+
 
   // ── Deployment Helper Methods ──────────────────────────────────────────────
 

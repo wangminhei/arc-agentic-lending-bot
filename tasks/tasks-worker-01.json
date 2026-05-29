@@ -399,6 +399,7 @@
       "priority": 5,
       "params": {
         "action": "deposit",
+        "token": "USDC",
         "amount": "5.00"
       },
       "deliverable": { "type": "json", "hash_content": false }
@@ -423,12 +424,41 @@
       "type": "lending_borrowing",
       "description": "Tự động quản lý tỉ lệ thế chấp (LTV) và bảo toàn Health Factor của quỹ",
       "enabled": true,
-      "schedule": "every_5_polls",
+      "schedule": "every_poll",
       "priority": 4,
       "params": {
         "action": "auto_manage"
       },
       "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-030",
+      "name": "Deposit cirBTC Collateral",
+      "type": "lending_borrowing",
+      "description": "Thế chấp 0.0001 cirBTC làm tài sản thế chấp cao cấp thứ hai",
+      "enabled": true,
+      "schedule": "once",
+      "priority": 5,
+      "params": {
+        "action": "deposit",
+        "token": "cirBTC",
+        "amount": "0.00010000"
+      },
+      "deliverable": { "type": "json", "hash_content": false }
+    },
+    {
+      "id": "task-031",
+      "name": "Borrow Additional EURC Credit Line",
+      "type": "lending_borrowing",
+      "description": "Thực hiện vay thêm 5 EURC sau khi đã thế chấp cirBTC để nâng hạn mức tín dụng",
+      "enabled": true,
+      "schedule": "once",
+      "priority": 4,
+      "params": {
+        "action": "borrow",
+        "amount": "5.00"
+      },
+      "deliverable": { "type": "json", "hash_content": false }
     }
   ]
 }

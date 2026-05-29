@@ -842,12 +842,31 @@ function updateLending(lending) {
     return;
   }
   
-  const collateral = parseFloat(lending.collateralUSDC || 0);
+  const usdcColl = parseFloat(lending.collateralUSDC || 0);
+  const btcColl = parseFloat(lending.collateralCirBTC || 0);
   const borrowed = parseFloat(lending.borrowedEURC || 0);
+  const btcPrice = parseFloat(lending.currentBtcPrice || 0);
+  const totalCollUSD = parseFloat(lending.totalCollateralUSD || 0);
   const maxBorrow = parseFloat(lending.maxBorrowEURC || 0);
   const hfVal = lending.healthFactor || 'N/A';
 
-  if (elements.lendingCollateral) elements.lendingCollateral.textContent = `${collateral.toFixed(2)} USDC`;
+  if (elements.lendingCollateral) elements.lendingCollateral.textContent = `${usdcColl.toFixed(2)} USDC`;
+  
+  const cirbtcCollEl = document.getElementById('lending-cirbtc-collateral');
+  if (cirbtcCollEl) {
+    cirbtcCollEl.textContent = `${btcColl.toFixed(8)} BTC`;
+  }
+  
+  const totalCollEl = document.getElementById('lending-total-collateral');
+  if (totalCollEl) {
+    totalCollEl.textContent = `$${totalCollUSD.toFixed(2)} USD`;
+  }
+  
+  const btcPriceEl = document.getElementById('lending-btc-price');
+  if (btcPriceEl) {
+    btcPriceEl.textContent = `$${btcPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  
   if (elements.lendingBorrowed) elements.lendingBorrowed.textContent = `${borrowed.toFixed(2)} EURC`;
   if (elements.lendingBorrowPower) elements.lendingBorrowPower.textContent = `${maxBorrow.toFixed(2)} EURC`;
   if (elements.lendingPoolAddress) elements.lendingPoolAddress.textContent = lending.poolAddress;
@@ -888,9 +907,9 @@ function updateLending(lending) {
 
   // LTV Calculation
   let ltvPct = 0;
-  if (collateral > 0) {
-    // 1 USDC = 1.10 EURC
-    ltvPct = (borrowed / (collateral * 1.10)) * 100;
+  if (totalCollUSD > 0) {
+    const borrowedUSD = borrowed / 1.10;
+    ltvPct = (borrowedUSD / totalCollUSD) * 100;
   }
   
   if (elements.lendingLtvVal) {
@@ -920,6 +939,9 @@ function setupLendingActions() {
     if (item.btn) {
       item.btn.addEventListener('click', async () => {
         const amount = elements.lendingAmount.value;
+        const selectTokenEl = document.getElementById('lending-token-select');
+        const token = selectTokenEl ? selectTokenEl.value : 'USDC';
+
         if (!amount || parseFloat(amount) <= 0) {
           showToast('Vui lòng nhập số lượng hợp lệ!', true);
           return;
@@ -934,12 +956,12 @@ function setupLendingActions() {
           const res = await fetch('/api/lending/action', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: item.action, amount })
+            body: JSON.stringify({ action: item.action, amount, token })
           });
           const data = await res.json();
           
           if (data.status === 'success') {
-            showToast(`Thành công: Giao dịch ${item.action} ${amount} USDC/EURC hoàn tất!`);
+            showToast(`Thành công: Giao dịch ${item.action} ${amount} ${token} hoàn tất!`);
           } else {
             showToast(`Thất bại: ${data.error || 'Giao dịch thất bại'}`, true);
           }
@@ -954,4 +976,56 @@ function setupLendingActions() {
       });
     }
   });
+
+  // Setup Oracle Simulators buttons
+  const btnOracleCrash = document.getElementById('btn-oracle-crash');
+  const btnOracleRestore = document.getElementById('btn-oracle-restore');
+
+  if (btnOracleCrash) {
+    btnOracleCrash.addEventListener('click', async () => {
+      btnOracleCrash.disabled = true;
+      try {
+        const res = await fetch('/api/lending/oracle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ price: 60000 })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('BTC Price Crashed to $60,000! Watch the AI Agent defend the position.');
+        } else {
+          showToast(`Error: ${data.error}`, true);
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối Oracle API!', true);
+      } finally {
+        btnOracleCrash.disabled = false;
+        fetchData();
+      }
+    });
+  }
+
+  if (btnOracleRestore) {
+    btnOracleRestore.addEventListener('click', async () => {
+      btnOracleRestore.disabled = true;
+      try {
+        const res = await fetch('/api/lending/oracle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ price: 90000 })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('BTC Price Restored to $90,000!');
+        } else {
+          showToast(`Error: ${data.error}`, true);
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối Oracle API!', true);
+      } finally {
+        btnOracleRestore.disabled = false;
+        fetchData();
+      }
+    });
+  }
 }
