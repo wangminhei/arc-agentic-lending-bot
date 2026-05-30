@@ -95,7 +95,7 @@ docker-compose logs -f arc-worker-01
 | IdentityRegistry    | `0x8004A818BFB912233c491871b3d84c89A494BD9e`  |
 | ReputationRegistry  | `0x8004B663056A597Dffe9eCcC1965A193B7388713`  |
 | ValidationRegistry  | `0x8004Cb1BF31DAf7788923b405b754f57acEB4272`  |
-| MultiCollateralPool | `0xe4e69d8db71aa9de6ea9f7733bd8226ff2259633`  |
+| MultiCollateralPool | `0x9a74bf64a73d5e3fed03002640a59a511bf0e33d`  |
 
 ## Task Types
 
@@ -108,25 +108,30 @@ docker-compose logs -f arc-worker-01
 | `reputation_building`  | ERC-8004 giveFeedback on ReputationRegistry  |
 | `lending_borrowing`    | Deposit USDC/cirBTC collateral, borrow EURC, auto-manage health factor |
 
-## Agentic Multi-Collateral & Auto-Hedging (Tính năng nâng cao)
+## Agentic Multi-Collateral & Risk Governance Upgrade (Tính năng nâng cao)
 
-Hệ thống tích hợp một giao thức **Multi-Collateral Lending & Borrowing** thông minh, quản trị rủi ro thế chấp tự động bằng AI Agent (Auto-Hedging):
+Hệ thống tích hợp giao thức **Multi-Collateral Lending & Borrowing** nâng cao, quản trị rủi ro thế chấp tự động bằng AI Agent với 4 tính năng vượt trội:
 
-1. **Smart Contract (`AgenticMultiCollateralPool.sol`)**:
-   * Địa chỉ: `0xe4e69d8db71aa9de6ea9f7733bd8226ff2259633`
-   * Cho phép thế chấp song song **USDC (6 decimals)** và **cirBTC (8 decimals)** để vay **EURC (6 decimals)** với hạn mức **80% LTV** (tỷ giá cố định 1 USD = 1.10 EURC).
-   * Tích hợp **Simulated Price Oracle** cho Bitcoin trên chuỗi, cho phép cập nhật giá BTC thông qua hàm `setBTCPrice(uint256)`.
+1. **Smart Contract nâng cấp (`AgenticMultiCollateralPool.sol`)**:
+   * Địa chỉ mới: `0x9a74bf64a73d5e3fed03002640a59a511bf0e33d`
+   * Hỗ trợ thế chấp song song **USDC (6 decimals)** và **cirBTC (8 decimals)** để vay **EURC (6 decimals)**. Hạn mức vay mặc định (LTV) là 80% (tỷ giá vay cố định 1 USD = 1.10 EURC).
+   * **Reputation-based LTV (ERC-8004)**: Tích hợp điểm uy tín của Agent. Nếu điểm >= 90, hạn mức vay tự động nâng lên **90% LTV**; nếu điểm >= 80, LTV nâng lên **85%**.
 
-2. **Cơ chế Tự động Phòng thủ (Credit Line Auto-Hedging)**:
-   * AI Agent chạy tác vụ giám sát trạng thái tài khoản liên tục (`auto_manage` chạy mỗi poll).
-   * Khi **Health Factor (Hệ số an toàn)** giảm xuống dưới **`1.20`** (do biến động giá BTC sụt giảm mạnh làm giảm giá trị tài sản thế chấp cirBTC), bot sẽ tự động nạp thêm **`5.00 USDC`** từ ví Treasury vào hợp đồng thông minh để restructuring thế chấp, đưa Health Factor trở lại mức an toàn.
+2. **Cơ chế Quản trị Rủi ro & Tự động Phòng thủ (Risk Governance Strategy)**:
+   * AI Agent chạy tác vụ giám sát liên tục (`auto_manage` mỗi poll). Nếu **Health Factor (Hệ số an toàn) < 1.20**, bot sẽ tự động thực hiện 1 trong 3 mức phòng thủ tùy theo số dư ví:
+     * **Mức 1 (Auto-Deposit)**: Nếu số dư ví >= 5.00 USDC, nạp thêm 5.00 USDC thế chấp để kéo HF lên mức an toàn.
+     * **Mức 2 (Emergency Deleverage)**: Nếu số dư ví không đủ USDC và còn cirBTC thế chấp, Agent tự động gọi hàm `emergencyDeleverage(uint256)` bán cirBTC trực tiếp on-chain theo giá Oracle hiện tại để thanh lý một phần nợ EURC.
+     * **Mức 3 (Circle CCTP Cross-Chain Bridge)**: Nếu cạn kiệt USDC và không còn cirBTC để bán, Agent giả lập bắc cầu mint 10.00 USDC xuyên chuỗi từ Base Sepolia sang Arc (chuyển tiền từ ví Validator sang Owner) và nạp thế chấp cứu vị thế.
 
-3. **Dashboard Mô phỏng Biến động Giá BTC**:
-   * Giao diện Dashboard tại `http://localhost:3005` hiển thị thời gian thực các chỉ số thế chấp của USDC, cirBTC, giá BTC hiện tại và Health Factor.
-   * Tích hợp bảng điều khiển mô phỏng giá:
-     * Nút **"Crash BTC Price ($60,000)"** cập nhật giá BTC giảm xuống $60,000 trên chuỗi, đẩy Health Factor xuống mức nguy hiểm (1.15).
-     * AI Agent sẽ tự động phát hiện và thực thi giao dịch nạp 5.00 USDC cứu vị thế, khôi phục Health Factor lên an toàn (1.43) trong vòng 30 giây.
-     * Nút **"Restore BTC Price ($90,000)"** khôi phục giá trị BTC trở lại trạng thái ban đầu.
+3. **Tính toán Rủi ro Giá Thanh Lý BTC (BTC Liquidation Price Analytics)**:
+   * Dashboard hiển thị giá thanh lý của Bitcoin thời gian thực dựa trên tỷ trọng nợ EURC và tài sản thế chấp USDC + cirBTC.
+   * Công thức: `Liquidation Price = ((Debt / (LTV * Exchange Rate)) - USDC Collateral) / BTC Collateral`
+
+4. **Bảng điều khiển Giả lập Khẩn cấp**:
+   * Dashboard tại `http://localhost:3005` cung cấp đầy đủ các nút bấm simulator phục vụ kiểm thử:
+     * **Crash BTC ($60k)** / **Restore ($90k)**: Thay đổi giá Oracle của Bitcoin.
+     * **Sim Low USDC & Crash (Deleverage)**: Giả lập sập giá BTC khi ví Agent cạn USDC, buộc Agent kích hoạt bán tự động cirBTC giảm nợ trên chuỗi.
+     * **Sim Low USDC & Crash (CCTP Bridge)**: Giả lập sập giá BTC khi ví cạn USDC và thế chấp không còn cirBTC để bán, buộc Agent bắc cầu USDC xuyên chuỗi.
 
 ## Runtime Files
 
