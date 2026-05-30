@@ -367,6 +367,23 @@ class Scheduler {
                 functionName: "getAccountData",
                 args: [wallets.owner.address as Address],
               }) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+
+              let reputation = 0n;
+              let ltv = 80n;
+              try {
+                reputation = await publicClient.readContract({
+                  address: lendingPoolAddress as Address,
+                  abi: LENDING_POOL_ABI,
+                  functionName: "userReputation",
+                  args: [wallets.owner.address as Address],
+                }) as bigint;
+                ltv = await publicClient.readContract({
+                  address: lendingPoolAddress as Address,
+                  abi: LENDING_POOL_ABI,
+                  functionName: "getUserLTV",
+                  args: [wallets.owner.address as Address],
+                }) as bigint;
+              } catch {}
               
               const hf = Number(healthFactor);
               lendingData = {
@@ -377,7 +394,9 @@ class Scheduler {
                 currentBtcPrice: formatUnits(currentBtcPrice, 6),
                 totalCollateralUSD: formatUnits(totalCollateralUSD, 6),
                 maxBorrowEURC: formatUnits(maxBorrowEURC, 6),
-                healthFactor: hf === 99999 ? "Safe" : (hf / 100).toFixed(2)
+                healthFactor: hf === 99999 ? "Safe" : (hf / 100).toFixed(2),
+                reputation: Number(reputation),
+                ltv: Number(ltv)
               };
             }
           }
@@ -486,6 +505,32 @@ class Scheduler {
 
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: true, price: price.toString(), txHash }));
+          } catch (err: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+        return;
+      }
+
+      // API: Simulated Low USDC trigger
+      if (url === "/api/lending/simulate-low-usdc" && method === "POST") {
+        let bodyStr = "";
+        req.on("data", (chunk) => { bodyStr += chunk; });
+        req.on("end", async () => {
+          try {
+            const body = JSON.parse(bodyStr);
+            const { mode } = body; // "deleverage" or "cctp"
+            
+            const simPath = path.resolve(`./runtime/${WORKER_ID}/state/simulate-low-usdc.json`);
+            const simDir = path.dirname(simPath);
+            fs.mkdirSync(simDir, { recursive: true });
+            
+            fs.writeFileSync(simPath, JSON.stringify({ active: true, mode: mode || "deleverage" }, null, 2));
+            this.logger.info(`[UI Request] Simulating low USDC state for emergency auto-defense mode: ${mode || "deleverage"}`);
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true, mode: mode || "deleverage" }));
           } catch (err: any) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: err.message }));

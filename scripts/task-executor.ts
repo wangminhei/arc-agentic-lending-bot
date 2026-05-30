@@ -91,6 +91,20 @@ export const LENDING_POOL_ABI = [
       { name: "healthFactor", type: "uint256" },
     ],
   },
+  {
+    name: "userReputation",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "getUserLTV",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "user", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
 ] as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -409,7 +423,31 @@ export class TaskExecutor {
       ["1", score.toString(), "0", tag, "", "", "", feedbackHash],
       "giveFeedback"
     );
-    return { txHash, score, tag, feedbackHash, recordedAt: new Date().toISOString() };
+
+    // Sync reputation to Multi-Collateral Pool if deployed
+    let poolSyncTxHash: string | undefined;
+    try {
+      const contractsPath = path.resolve(`./runtime/${this.workerId}/state/contracts.json`);
+      if (fs.existsSync(contractsPath)) {
+        const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf-8"));
+        const poolAddress = contracts.multi_collateral_pool;
+        if (poolAddress) {
+          this.logger.info(`  [Lending Reputation Sync] Syncing reputation score ${score} to Multi-Collateral Pool...`);
+          poolSyncTxHash = await this.walletManager.executeContract(
+            wallets.owner.address,
+            poolAddress,
+            "updateReputation(address,uint256)",
+            [wallets.owner.address, score.toString()],
+            "Update Reputation on Pool"
+          );
+          this.logger.success(`  [Lending Reputation Sync] Dyn LTV updated on-chain! Tx: ${poolSyncTxHash}`);
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`  [Lending Reputation Sync Failed] ${err.message}`);
+    }
+
+    return { txHash, poolSyncTx: poolSyncTxHash, score, tag, feedbackHash, recordedAt: new Date().toISOString() };
   }
 
   // ── task: usdc_transfer ───────────────────────────────────────────────────
@@ -1413,10 +1451,24 @@ export class TaskExecutor {
       let executedAction = "none";
       let autoAmount = "0";
 
+      let simulateLowUSDC = false;
+      let simMode = "deleverage"; // "deleverage" or "cctp"
+      const simPath = path.resolve(`./runtime/${this.workerId}/state/simulate-low-usdc.json`);
+      if (fs.existsSync(simPath)) {
+        try {
+          const simData = JSON.parse(fs.readFileSync(simPath, "utf-8"));
+          simulateLowUSDC = !!simData.active;
+          if (simData.mode) simMode = simData.mode;
+        } catch {}
+      }
+
       if (hf < 120 && borrowedVal > 0) {
         this.logger.warn(`  [Lending Warning] Health Factor is low (${(hf / 100).toFixed(2)} < 1.20). Auto-defending position...`);
         const ownerBal = await this.walletManager.getUSDCBalance(wallets.owner.address);
-        if (parseFloat(ownerBal.usdc) >= 5.0) {
+        const actualUSDC = parseFloat(ownerBal.usdc);
+        const usdcBalance = simulateLowUSDC ? 0.5 : actualUSDC;
+
+        if (usdcBalance >= 5.0) {
           executedAction = "deposit";
           autoAmount = "5.00";
           this.logger.info(`  [Lending Auto-Deposit] Depositing 5.00 USDC collateral to increase Health Factor...`);
@@ -1437,8 +1489,64 @@ export class TaskExecutor {
             [amountRaw.toString()],
             "Deposit USDC Collateral"
           );
+        } else if (simMode === "deleverage" && collateralCirBTCVal > 0) {
+          // Idea 1: Emergency Deleverage
+          executedAction = "deleverage";
+          autoAmount = "0.00005000";
+          const btcAmountSat = 5000n; // 0.00005 BTC in 8 decimals
+          this.logger.warn(`  [Emergency Deleverage] Low USDC balance (${usdcBalance} USDC). Selling 0.00005 cirBTC collateral directly on-chain to repay debt...`);
+          
+          txHash = await this.walletManager.executeContract(
+            wallets.owner.address,
+            lendingPoolAddress,
+            "emergencyDeleverage(uint256)",
+            [btcAmountSat.toString()],
+            "Emergency Deleverage"
+          );
+          this.logger.success(`  [Emergency Deleverage] On-chain deleveraging succeeded! Tx: ${txHash}`);
+          
+          try { fs.writeFileSync(simPath, JSON.stringify({ active: false, mode: "deleverage" }, null, 2)); } catch {}
         } else {
-          this.logger.error(`  [Lending Auto-Defense Failed] Low USDC balance (${ownerBal.usdc} USDC) to deposit more collateral!`);
+          // Idea 2: Circle CCTP Cross-Chain Simulation
+          executedAction = "cctp_sim";
+          autoAmount = "10.00";
+          this.logger.warn(`  [Circle CCTP Simulation] Low USDC balance and no BTC collateral to sell.`);
+          this.logger.info(`  [CCTP Bridge] Initiating cross-chain bridge transfer of 10.00 USDC from Base Sepolia to Arc...`);
+          
+          const validatorBal = await this.walletManager.getUSDCBalance(wallets.validator.address);
+          if (parseFloat(validatorBal.usdc) >= 10.0) {
+            this.logger.info(`  [CCTP Gateway] Minting 10.00 USDC on Arc Testnet via Circle CCTP...`);
+            const refillTx = await this.walletManager.transferUSDC(
+              wallets.validator.id,
+              wallets.validator.address,
+              wallets.owner.address,
+              "10.00"
+            );
+            this.logger.success(`  [CCTP Bridge Confirmed] Received 10.00 USDC on Arc via CCTP. Tx: ${refillTx}`);
+            
+            executedAction = "deposit_after_cctp";
+            autoAmount = "5.00";
+            this.logger.info(`  [Lending Auto-Deposit] Depositing 5.00 USDC collateral from bridged funds...`);
+            const amountRaw = parseUnits(autoAmount, 6);
+            await this.walletManager.executeContract(
+              wallets.owner.address,
+              USDC_CONTRACT,
+              "approve(address,uint256)",
+              [lendingPoolAddress, amountRaw.toString()],
+              "Approve USDC to LendingPool"
+            );
+            txHash = await this.walletManager.executeContract(
+              wallets.owner.address,
+              lendingPoolAddress,
+              "depositUSDC(uint256)",
+              [amountRaw.toString()],
+              "Deposit USDC Collateral"
+            );
+            
+            try { fs.writeFileSync(simPath, JSON.stringify({ active: false, mode: "cctp" }, null, 2)); } catch {}
+          } else {
+            this.logger.error(`  [CCTP Simulation Failed] Validator wallet has insufficient USDC to mock CCTP bridge.`);
+          }
         }
       } 
       else if ((hf > 300 || hf === 99999) && collateralUSDCVal < 10.0 && collateralCirBTCVal === 0.0) {

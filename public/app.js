@@ -925,6 +925,36 @@ function updateLending(lending) {
       elements.lendingLtvFill.style.backgroundColor = 'var(--success-color)';
     }
   }
+
+  // Calculate and update BTC Liquidation Price Risk Metric
+  const liqPriceEl = document.getElementById('lending-liquidation-price');
+  if (liqPriceEl) {
+    if (borrowed === 0) {
+      liqPriceEl.textContent = '$0.00';
+      liqPriceEl.className = 'val text-success';
+    } else if (btcColl === 0) {
+      liqPriceEl.textContent = 'N/A';
+      liqPriceEl.className = 'val text-gray-400';
+    } else {
+      const ltvRate = ((lending.ltv || 80) * 1.10) / 100;
+      const liqPriceVal = ((borrowed / ltvRate) - usdcColl) / btcColl;
+      if (liqPriceVal <= 0) {
+        liqPriceEl.textContent = 'Never (USDC Backed)';
+        liqPriceEl.className = 'val text-success';
+      } else {
+        liqPriceEl.textContent = `$${liqPriceVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        liqPriceEl.className = 'val text-danger';
+      }
+    }
+  }
+
+  // Update Agent Reputation & LTV Tier Display
+  const repLtvEl = document.getElementById('lending-rep-ltv');
+  if (repLtvEl) {
+    const repScore = lending.reputation || 0;
+    const ltvVal = lending.ltv || 80;
+    repLtvEl.textContent = `${ltvVal}% (Rep: ${repScore})`;
+  }
 }
 
 function setupLendingActions() {
@@ -980,6 +1010,8 @@ function setupLendingActions() {
   // Setup Oracle Simulators buttons
   const btnOracleCrash = document.getElementById('btn-oracle-crash');
   const btnOracleRestore = document.getElementById('btn-oracle-restore');
+  const btnOracleSimDeleverage = document.getElementById('btn-oracle-sim-deleverage');
+  const btnOracleSimCctp = document.getElementById('btn-oracle-sim-cctp');
 
   if (btnOracleCrash) {
     btnOracleCrash.addEventListener('click', async () => {
@@ -1024,6 +1056,70 @@ function setupLendingActions() {
         showToast('Lỗi kết nối Oracle API!', true);
       } finally {
         btnOracleRestore.disabled = false;
+        fetchData();
+      }
+    });
+  }
+
+  if (btnOracleSimDeleverage) {
+    btnOracleSimDeleverage.addEventListener('click', async () => {
+      btnOracleSimDeleverage.disabled = true;
+      try {
+        // Step 1: Simulate Low USDC mode
+        await fetch('/api/lending/simulate-low-usdc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'deleverage' })
+        });
+        
+        // Step 2: Crash BTC Price
+        const res = await fetch('/api/lending/oracle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ price: 60000 })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Mô phỏng ví hết USDC & sập giá BTC! Agent sẽ tự động bán cirBTC giảm nợ.');
+        } else {
+          showToast(`Error: ${data.error}`, true);
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối Simulator API!', true);
+      } finally {
+        btnOracleSimDeleverage.disabled = false;
+        fetchData();
+      }
+    });
+  }
+
+  if (btnOracleSimCctp) {
+    btnOracleSimCctp.addEventListener('click', async () => {
+      btnOracleSimCctp.disabled = true;
+      try {
+        // Step 1: Simulate Low USDC mode with cctp
+        await fetch('/api/lending/simulate-low-usdc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'cctp' })
+        });
+        
+        // Step 2: Crash BTC Price
+        const res = await fetch('/api/lending/oracle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ price: 60000 })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Mô phỏng ví hết USDC & sập giá BTC! Agent sẽ gọi Circle CCTP cứu ví.');
+        } else {
+          showToast(`Error: ${data.error}`, true);
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối Simulator API!', true);
+      } finally {
+        btnOracleSimCctp.disabled = false;
         fetchData();
       }
     });

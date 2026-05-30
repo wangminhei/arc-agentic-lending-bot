@@ -338,6 +338,14 @@
                     <span class="lbl">HEALTH FACTOR</span>
                     <strong class="val" id="lending-health-factor">N/A</strong>
                   </div>
+                  <div class="lending-stat-box">
+                    <span class="lbl">BTC LIQUIDATION PRICE</span>
+                    <strong class="val text-danger" id="lending-liquidation-price">N/A</strong>
+                  </div>
+                  <div class="lending-stat-box">
+                    <span class="lbl">AGENT LTV & REP</span>
+                    <strong class="val text-success" id="lending-rep-ltv">80% (Rep: 0)</strong>
+                  </div>
                 </div>
                 
                 <div class="lending-progress-section">
@@ -393,16 +401,24 @@
 
                   <!-- Oracle simulator box -->
                   <div class="lending-control-box">
-                    <h3>BTC Price Oracle Simulator</h3>
+                    <h3>BTC Price Oracle & Risk Simulator</h3>
                     <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 15px; line-height: 1.4;">
-                      Simulate market movements on-chain. Crashing the price of Bitcoin will lower the collateral valuation, driving the Health Factor down and triggering the AI Agent to automatically defend the position.
+                      Simulate market movements on-chain. Crashing the price of Bitcoin will lower the collateral valuation, driving the Health Factor down. You can mock low USDC states to test emergency defenses.
                     </p>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                      <button id="btn-oracle-crash" class="btn btn-danger btn-full-width" style="padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
-                        <i data-lucide="trending-down"></i> Crash BTC Price ($60,000)
+                      <div style="display: flex; gap: 10px;">
+                        <button id="btn-oracle-crash" class="btn btn-danger" style="flex: 1; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                          <i data-lucide="trending-down"></i> Crash BTC ($60k)
+                        </button>
+                        <button id="btn-oracle-restore" class="btn btn-success" style="flex: 1; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                          <i data-lucide="trending-up"></i> Restore ($90k)
+                        </button>
+                      </div>
+                      <button id="btn-oracle-sim-deleverage" class="btn btn-warning btn-full-width" style="padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                        <i data-lucide="shield-alert"></i> Sim Low USDC & Crash (Deleverage)
                       </button>
-                      <button id="btn-oracle-restore" class="btn btn-success btn-full-width" style="padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
-                        <i data-lucide="trending-up"></i> Restore BTC Price ($90,000)
+                      <button id="btn-oracle-sim-cctp" class="btn btn-primary btn-full-width" style="padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                        <i data-lucide="shuffle"></i> Sim Low USDC & Crash (CCTP Bridge)
                       </button>
                     </div>
                   </div>
