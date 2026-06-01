@@ -713,6 +713,7 @@ function resizeChart() {
 }
 
 function updateChart(results) {
+  if (!elements.chartCanvas) return;
   // Extract latest block tx count from block fetch tasks to plot
   const blockFetchTxs = results
     .filter(r => r.taskId === 'task-001' && r.status === 'success' && r.result && r.result.transactionCount !== undefined)
