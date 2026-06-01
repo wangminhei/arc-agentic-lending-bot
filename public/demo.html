@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arc × Circle: AI Agent Gas-Free Auto-Payments Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg-color: #0b0e11;
+      --panel-bg: #151821;
+      --panel-border: #1d222d;
+      --primary-color: #00d2ff;
+      --primary-glow: rgba(0, 210, 255, 0.15);
+      --success-color: #00e676;
+      --danger-color: #ff1744;
+      --text-main: #e2e8f0;
+      --text-muted: #808a9d;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 40px 20px;
+      overflow-x: hidden;
+      background-image: radial-gradient(circle at 50% -20%, rgba(0, 210, 255, 0.12), transparent 50%),
+                        radial-gradient(circle at 10% 80%, rgba(0, 230, 118, 0.04), transparent 30%);
+    }
+
+    .container {
+      max-width: 900px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+    }
+
+    /* Glassmorphism Header Card */
+    header {
+      background: rgba(21, 24, 33, 0.6);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 30px;
+      text-align: center;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      position: relative;
+      overflow: hidden;
+    }
+
+    header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--primary-color), var(--success-color), transparent);
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #ffffff 30%, var(--primary-color) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    p.subtitle {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 700px;
+      margin: 0 auto 20px auto;
+      line-height: 1.6;
+    }
+
+    .badge-stack {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 6px 14px;
+      border-radius: 50px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-main);
+    }
+
+    .badge i {
+      color: var(--primary-color);
+    }
+
+    /* Main Interaction Card */
+    .card {
+      background: rgba(21, 24, 33, 0.45);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 25px;
+    }
+
+    .input-label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-wrapper i {
+      position: absolute;
+      left: 16px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      background: rgba(11, 14, 17, 0.8);
+      border: 1.5px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 16px 16px 16px 48px;
+      color: #ffffff;
+      font-size: 1.05rem;
+      font-family: 'Fira Code', monospace;
+      transition: all 0.25s ease;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 15px rgba(0, 210, 255, 0.2);
+    }
+
+    .btn-submit {
+      background: linear-gradient(135deg, var(--primary-color), #00a8cc);
+      color: #0b0e11;
+      border: none;
+      border-radius: 10px;
+      padding: 16px 24px;
+      font-size: 1.1rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      width: 100%;
+      box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
+    }
+
+    .btn-submit:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 210, 255, 0.4);
+      filter: brightness(1.1);
+    }
+
+    .btn-submit:active {
+      transform: translateY(0);
+    }
+
+    .btn-submit:disabled {
+      background: var(--panel-border);
+      color: var(--text-dim);
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+      filter: none;
+    }
+
+    /* Terminal Output / Progress area */
+    .demo-progress-panel {
+      display: none;
+      margin-top: 30px;
+      border-top: 1px solid var(--panel-border);
+      padding-top: 25px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--primary-color), var(--success-color));
+      transition: width 0.3s ease;
+    }
+
+    .payments-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      padding-right: 5px;
+    }
+
+    .payment-item {
+      background: rgba(11, 14, 17, 0.6);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .payment-item.completed {
+      border-color: rgba(0, 230, 118, 0.3);
+      background: rgba(0, 230, 118, 0.02);
+    }
+
+    .payment-item.processing {
+      border-color: rgba(0, 210, 255, 0.3);
+      background: rgba(0, 210, 255, 0.02);
+      animation: pulse-glow 1.5s infinite alternate;
+    }
+
+    .payment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .payment-idx {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .status-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .status-badge.pending {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+    }
+
+    .status-badge.processing {
+      background: rgba(0, 210, 255, 0.15);
+      color: var(--primary-color);
+    }
+
+    .status-badge.completed {
+      background: rgba(0, 230, 118, 0.15);
+      color: var(--success-color);
+    }
+
+    .payment-amount {
+      font-size: 0.95rem;
+      font-weight: 700;
+      font-family: 'Fira Code', monospace;
+    }
+
+    .tx-link {
+      font-size: 0.75rem;
+      color: var(--primary-color);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: 'Fira Code', monospace;
+      width: fit-content;
+      opacity: 0.8;
+      transition: opacity 0.2s ease;
+    }
+
+    .tx-link:hover {
+      opacity: 1;
+      text-decoration: underline;
+    }
+
+    .nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 20px;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--panel-border);
+      color: var(--text-muted);
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+    }
+
+    /* Animations */
+    @keyframes pulse-glow {
+      0% { box-shadow: 0 0 5px rgba(0, 210, 255, 0.1); }
+      100% { box-shadow: 0 0 15px rgba(0, 210, 255, 0.25); }
+    }
+
+    /* Toast system */
+    #toast {
+      visibility: hidden;
+      min-width: 250px;
+      background-color: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      color: #fff;
+      text-align: center;
+      border-radius: 8px;
+      padding: 16px;
+      position: fixed;
+      z-index: 1000;
+      bottom: 30px;
+      font-size: 0.95rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      transition: visibility 0s, opacity 0.3s linear;
+      opacity: 0;
+    }
+
+    #toast.show {
+      visibility: visible;
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header Navbar -->
+  <div class="nav-footer" style="margin-top: 0; margin-bottom: 10px;">
+    <a href="/" class="btn-secondary">
+      <i data-lucide="arrow-left"></i> Quay lại Bảng điều khiển
+    </a>
+  </div>
+
+  <header>
+    <h1>Hệ Thống Thanh Toán AI Agent Tự Động</h1>
+    <p class="subtitle">
+      Trải nghiệm tốc độ máy móc của các AI Agent thanh toán on-chain. Nhập địa chỉ ví của bạn, máy chủ của chúng tôi sẽ gọi ví Circle Developer-Controlled để tự động phân phối 20 giao dịch USDC liên tục. Gasless, an toàn, không cần nhập khóa riêng tư!
+    </p>
+    <div class="badge-stack">
+      <span class="badge"><i data-lucide="cpu"></i> AI Agent Ready</span>
+      <span class="badge"><i data-lucide="wallet"></i> Circle Dev-Controlled Wallets</span>
+      <span class="badge"><i data-lucide="zap"></i> Arc Testnet (Chain ID 5042002)</span>
+      <span class="badge"><i data-lucide="shield-check"></i> HTTP 402 / EIP-3009 Protocol</span>
+    </div>
+  </header>
+
+  <div class="card">
+    <div class="input-group">
+      <label class="input-label" for="wallet-address">Địa chỉ ví nhận USDC của bạn (Arc Testnet)</label>
+      <div class="input-wrapper">
+        <i data-lucide="wallet"></i>
+        <input type="text" id="wallet-address" placeholder="0x..." autocomplete="off">
+      </div>
+    </div>
+    
+    <button id="btn-trigger" class="btn-submit">
+      <i data-lucide="play-circle"></i> Kích Hoạt 20 Thanh Toán Tự Động
+    </button>
+
+    <!-- Progress Panel -->
+    <div id="progress-panel" class="demo-progress-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i data-lucide="loader-2" class="spin" style="color: var(--primary-color); display: none;" id="panel-spinner"></i>
+          <span id="panel-status-text">Đang chuẩn bị giao dịch...</span>
+        </div>
+        <div id="panel-percentage" style="font-size: 0.95rem; font-weight: 700; color: var(--success-color);">0%</div>
+      </div>
+      
+      <div class="progress-bar-container">
+        <div id="progress-bar-fill" class="progress-bar-fill"></div>
+      </div>
+
+      <div id="payments-grid" class="payments-grid">
+        <!-- Render 20 payment items -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast">Thông báo ở đây</div>
+
+<script>
+  // Initialize Lucide Icons
+  lucide.createIcons();
+
+  const btnTrigger = document.getElementById('btn-trigger');
+  const walletInput = document.getElementById('wallet-address');
+  const progressPanel = document.getElementById('progress-panel');
+  const progressBarFill = document.getElementById('progress-bar-fill');
+  const panelStatusText = document.getElementById('panel-status-text');
+  const panelPercentage = document.getElementById('panel-percentage');
+  const paymentsGrid = document.getElementById('payments-grid');
+  const panelSpinner = document.getElementById('panel-spinner');
+
+  let activeInterval = null;
+
+  // Render placeholders for 20 payments
+  function setupGrid() {
+    paymentsGrid.innerHTML = '';
+    for (let i = 1; i <= 20; i++) {
+      const item = document.createElement('div');
+      item.className = 'payment-item';
+      item.id = `pay-item-${i}`;
+      item.innerHTML = `
+        <div class="payment-header">
+          <span class="payment-idx">Thanh toán #${i}</span>
+          <span class="status-badge pending" id="pay-status-${i}">Chờ...</span>
+        </div>
+        <div class="payment-amount">0.0001 USDC</div>
+        <div class="tx-link" style="visibility: hidden;" id="pay-link-${i}">
+          <span>Pending</span>
+        </div>
+      `;
+      paymentsGrid.appendChild(item);
+    }
+  }
+
+  function showToast(message, isError = false) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.style.borderColor = isError ? 'var(--danger-color)' : 'var(--panel-border)';
+    toast.className = 'show';
+    setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3500);
+  }
+
+  btnTrigger.addEventListener('click', async () => {
+    const address = walletInput.value.trim();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      showToast('Địa chỉ ví không hợp lệ! Vui lòng nhập địa chỉ ví EVM (0x...) gồm 42 ký tự.', true);
+      return;
+    }
+
+    // Reset UI
+    if (activeInterval) clearInterval(activeInterval);
+    setupGrid();
+    progressPanel.style.display = 'block';
+    btnTrigger.disabled = true;
+    walletInput.disabled = true;
+    panelSpinner.style.display = 'inline-block';
+    panelSpinner.style.animation = 'spin 1s linear infinite';
+    panelStatusText.textContent = 'Đang khởi tạo các giao dịch từ Circle...';
+    progressBarFill.style.width = '0%';
+    panelPercentage.textContent = '0%';
+
+    try {
+      // Step 1: Submit demo run request
+      const res = await fetch('/api/demo/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: address })
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Yêu cầu chạy demo thất bại.');
+      }
+
+      const txIds = data.txIds;
+      showToast('Đã khởi tạo thành công 20 giao dịch. Đang theo dõi on-chain...');
+
+      // Map Circle txIds to indices (0-19)
+      const txMap = txIds.map((id, index) => ({
+        id,
+        index: index + 1,
+        state: 'PENDING',
+        txHash: null
+      }));
+
+      // Update state in UI to Processing
+      txMap.forEach(tx => {
+        const statusEl = document.getElementById(`pay-status-${tx.index}`);
+        const itemEl = document.getElementById(`pay-item-${tx.index}`);
+        statusEl.textContent = 'Xử lý...';
+        statusEl.className = 'status-badge processing';
+        itemEl.className = 'payment-item processing';
+      });
+
+      // Step 2: Poll transaction status
+      activeInterval = setInterval(async () => {
+        try {
+          const checkRes = await fetch(`/api/demo/tx-status?ids=${txIds.join(',')}`);
+          const checkData = await checkRes.json();
+
+          if (!checkData.success) return;
+
+          let completedCount = 0;
+          checkData.statuses.forEach(status => {
+            const txObj = txMap.find(t => t.id === status.id);
+            if (!txObj) return;
+
+            txObj.state = status.state;
+            txObj.txHash = status.txHash;
+
+            const statusEl = document.getElementById(`pay-status-${txObj.index}`);
+            const itemEl = document.getElementById(`pay-item-${txObj.index}`);
+            const linkEl = document.getElementById(`pay-link-${txObj.index}`);
+
+            if (status.state === 'COMPLETE' && status.txHash) {
+              completedCount++;
+              statusEl.textContent = 'Xong';
+              statusEl.className = 'status-badge completed';
+              itemEl.className = 'payment-item completed';
+              linkEl.style.visibility = 'visible';
+              linkEl.innerHTML = `
+                <a href="https://testnet.arcscan.app/tx/${status.txHash}" target="_blank" class="tx-link">
+                  ${status.txHash.substring(0, 6)}...${status.txHash.substring(status.txHash.length - 4)} <i data-lucide="external-link" style="width: 12px; height: 12px;"></i>
+                </a>
+              `;
+            } else if (status.state === 'FAILED' || status.state === 'ERROR') {
+              completedCount++;
+              statusEl.textContent = 'Lỗi';
+              statusEl.className = 'status-badge completed';
+              itemEl.style.borderColor = 'rgba(255, 23, 68, 0.3)';
+              itemEl.style.background = 'rgba(255, 23, 68, 0.02)';
+            }
+          });
+
+          // Update Progress Bar
+          const percentage = Math.round((completedCount / 20) * 100);
+          progressBarFill.style.width = `${percentage}%`;
+          panelPercentage.textContent = `${percentage}%`;
+          panelStatusText.textContent = `Đang xử lý thanh toán: ${completedCount}/20 hoàn thành`;
+
+          // Re-create icons for new elements
+          lucide.createIcons();
+
+          // Completed all?
+          if (completedCount === 20) {
+            clearInterval(activeInterval);
+            panelSpinner.style.display = 'none';
+            panelStatusText.textContent = 'Hoàn thành toàn bộ 20 thanh toán tự động!';
+            btnTrigger.disabled = false;
+            walletInput.disabled = false;
+            showToast('Chúc mừng! Đã thực hiện thành công 20 thanh toán tự động không cần gas.');
+          }
+        } catch (err) {
+          console.error('Lỗi khi kiểm tra trạng thái GD:', err);
+        }
+      }, 2500);
+
+    } catch (err) {
+      panelSpinner.style.display = 'none';
+      panelStatusText.textContent = 'Lỗi xảy ra trong quá trình chạy demo.';
+      btnTrigger.disabled = false;
+      walletInput.disabled = false;
+      showToast(`Lỗi: ${err.message}`, true);
+    }
+  });
+
+  // Simple CSS spin style inside head style was missing, let's inject keyframes
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .spin {
+      animation: spin 1.2s linear infinite;
+    }
+  `;
+  document.head.appendChild(style);
+</script>
+</body>
+</html>

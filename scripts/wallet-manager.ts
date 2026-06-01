@@ -264,6 +264,36 @@ export class WalletManager {
     return this.waitForTx(txId, `transfer ${amount} ${tokenSymbol}`);
   }
 
+  // ── Initiate Transfer without awaiting confirmation (for batch demo) ───────
+
+  async initiateTransferToken(
+    fromAddress: string,
+    toAddress: string,
+    amount: string,
+    tokenAddress: string
+  ): Promise<string> {
+    const tx = await this.circleClient.createTransaction({
+      walletAddress: fromAddress,
+      blockchain: "ARC-TESTNET",
+      tokenAddress,
+      destinationAddress: toAddress,
+      amount: [amount],
+      fee: { type: "level", config: { feeLevel: "MEDIUM" } },
+    });
+
+    const txId = tx.data?.id;
+    if (!txId) throw new Error("Failed to initiate transfer");
+    return txId;
+  }
+
+  async initiateTransferUSDC(
+    fromAddress: string,
+    toAddress: string,
+    amount: string
+  ): Promise<string> {
+    return this.initiateTransferToken(fromAddress, toAddress, amount, USDC_CONTRACT);
+  }
+
   // ── Transfer USDC between wallets ─────────────────────────────────────────
 
   async transferUSDC(

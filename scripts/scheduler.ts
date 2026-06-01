@@ -561,6 +561,78 @@ class Scheduler {
         return;
       }
 
+      // API: demo run (20 automated payments)
+      if (url === "/api/demo/run" && method === "POST") {
+        let bodyStr = "";
+        req.on("data", (chunk) => { bodyStr += chunk; });
+        req.on("end", async () => {
+          try {
+            const body = JSON.parse(bodyStr);
+            const { walletAddress } = body;
+            if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Địa chỉ ví không hợp lệ" }));
+              return;
+            }
+
+            const wallets = await this.walletManager.getOrCreateWallets();
+            this.logger.info(`[Demo API] Initiating 20 automated payments of 0.0001 USDC to ${walletAddress}...`);
+            
+            const txIds: string[] = [];
+            for (let i = 1; i <= 20; i++) {
+              const txId = await this.walletManager.initiateTransferUSDC(
+                wallets.owner.address,
+                walletAddress,
+                "0.0001"
+              );
+              txIds.push(txId);
+              // Wait 150ms to avoid rate limit
+              await new Promise(r => setTimeout(r, 150));
+            }
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true, txIds }));
+          } catch (err: any) {
+            this.logger.error(`[Demo API Failed] ${err.message}`);
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+        return;
+      }
+
+      // API: demo transaction status check
+      if (url.startsWith("/api/demo/tx-status") && method === "GET") {
+        try {
+          const parsedUrl = new URL(url, `http://${req.headers.host || "localhost"}`);
+          const idsParam = parsedUrl.searchParams.get("ids") || "";
+          const ids = idsParam.split(",").filter(Boolean);
+
+          const circleClient = this.walletManager.getCircleClient();
+          const statuses: any[] = [];
+
+          for (const id of ids) {
+            try {
+              const { data } = await circleClient.getTransaction({ id });
+              statuses.push({
+                id,
+                state: data?.transaction?.state || "UNKNOWN",
+                txHash: data?.transaction?.txHash || null,
+              });
+            } catch {
+              statuses.push({ id, state: "ERROR", txHash: null });
+            }
+          }
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true, statuses }));
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: err.message }));
+        }
+        return;
+      }
+
       // Serve static assets from /public or task files
       let filePath = path.join(process.cwd(), "public", url === "/" ? "index.html" : url);
       
