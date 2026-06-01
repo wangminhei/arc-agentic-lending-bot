@@ -514,7 +514,7 @@
     walletInput.disabled = true;
     panelSpinner.style.display = 'inline-block';
     panelSpinner.style.animation = 'spin 1s linear infinite';
-    panelStatusText.textContent = 'Đang khởi tạo các giao dịch từ Circle...';
+    panelStatusText.textContent = 'Đang khởi tạo phiên thanh toán từ Circle...';
     progressBarFill.style.width = '0%';
     panelPercentage.textContent = '0%';
 
@@ -531,88 +531,112 @@
         throw new Error(data.error || 'Yêu cầu chạy demo thất bại.');
       }
 
-      const txIds = data.txIds;
-      showToast('Đã khởi tạo thành công 20 giao dịch. Đang theo dõi on-chain...');
+      const runId = data.runId;
+      showToast('Đang khởi tạo phiên demo. Vui lòng đợi...');
 
-      // Map Circle txIds to indices (0-19)
-      const txMap = txIds.map((id, index) => ({
-        id,
-        index: index + 1,
-        state: 'PENDING',
-        txHash: null
-      }));
+      // Map Circle txIds to indices
+      let localTxMap = []; // array of { id, index, state, txHash }
 
-      // Update state in UI to Processing
-      txMap.forEach(tx => {
-        const statusEl = document.getElementById(`pay-status-${tx.index}`);
-        const itemEl = document.getElementById(`pay-item-${tx.index}`);
-        statusEl.textContent = 'Xử lý...';
-        statusEl.className = 'status-badge processing';
-        itemEl.className = 'payment-item processing';
-      });
-
-      // Step 2: Poll transaction status
+      // Step 2: Poll run-status to check newly initiated transactions
       activeInterval = setInterval(async () => {
         try {
-          const checkRes = await fetch(`/api/demo/tx-status?ids=${txIds.join(',')}`);
-          const checkData = await checkRes.json();
+          const statusRes = await fetch(`/api/demo/run-status?runId=${runId}`);
+          const statusData = await statusRes.json();
 
-          if (!checkData.success) return;
+          if (!statusData.success) {
+            throw new Error(statusData.error || 'Lỗi khi lấy trạng thái demo.');
+          }
 
-          let completedCount = 0;
-          checkData.statuses.forEach(status => {
-            const txObj = txMap.find(t => t.id === status.id);
-            if (!txObj) return;
+          if (statusData.state === 'failed') {
+            throw new Error(statusData.error || 'Phiên demo thất bại trên máy chủ.');
+          }
 
-            txObj.state = status.state;
-            txObj.txHash = status.txHash;
+          const txIds = statusData.txIds || [];
 
-            const statusEl = document.getElementById(`pay-status-${txObj.index}`);
-            const itemEl = document.getElementById(`pay-item-${txObj.index}`);
-            const linkEl = document.getElementById(`pay-link-${txObj.index}`);
+          // Map any new txIds to UI slots
+          txIds.forEach((id, index) => {
+            const slotIndex = index + 1;
+            let txObj = localTxMap.find(t => t.id === id);
+            if (!txObj) {
+              txObj = { id, index: slotIndex, state: 'PENDING', txHash: null };
+              localTxMap.push(txObj);
 
-            if (status.state === 'COMPLETE' && status.txHash) {
-              completedCount++;
-              statusEl.textContent = 'Xong';
-              statusEl.className = 'status-badge completed';
-              itemEl.className = 'payment-item completed';
-              linkEl.style.visibility = 'visible';
-              linkEl.innerHTML = `
-                <a href="https://testnet.arcscan.app/tx/${status.txHash}" target="_blank" class="tx-link">
-                  ${status.txHash.substring(0, 6)}...${status.txHash.substring(status.txHash.length - 4)} <i data-lucide="external-link" style="width: 12px; height: 12px;"></i>
-                </a>
-              `;
-            } else if (status.state === 'FAILED' || status.state === 'ERROR') {
-              completedCount++;
-              statusEl.textContent = 'Lỗi';
-              statusEl.className = 'status-badge completed';
-              itemEl.style.borderColor = 'rgba(255, 23, 68, 0.3)';
-              itemEl.style.background = 'rgba(255, 23, 68, 0.02)';
+              // Update state in UI to Processing
+              const statusEl = document.getElementById(`pay-status-${slotIndex}`);
+              const itemEl = document.getElementById(`pay-item-${slotIndex}`);
+              statusEl.textContent = 'Xử lý...';
+              statusEl.className = 'status-badge processing';
+              itemEl.className = 'payment-item processing';
             }
           });
 
-          // Update Progress Bar
-          const percentage = Math.round((completedCount / 20) * 100);
-          progressBarFill.style.width = `${percentage}%`;
-          panelPercentage.textContent = `${percentage}%`;
-          panelStatusText.textContent = `Đang xử lý thanh toán: ${completedCount}/20 hoàn thành`;
+          // Check on-chain tx status if we have active txIds
+          if (localTxMap.length > 0) {
+            const checkRes = await fetch(`/api/demo/tx-status?ids=${localTxMap.map(t => t.id).join(',')}`);
+            const checkData = await checkRes.json();
 
-          // Re-create icons for new elements
-          lucide.createIcons();
+            if (checkData.success) {
+              let completedCount = 0;
+              checkData.statuses.forEach(status => {
+                const txObj = localTxMap.find(t => t.id === status.id);
+                if (!txObj) return;
 
-          // Completed all?
-          if (completedCount === 20) {
-            clearInterval(activeInterval);
-            panelSpinner.style.display = 'none';
-            panelStatusText.textContent = 'Hoàn thành toàn bộ 20 thanh toán tự động!';
-            btnTrigger.disabled = false;
-            walletInput.disabled = false;
-            showToast('Chúc mừng! Đã thực hiện thành công 20 thanh toán tự động không cần gas.');
+                txObj.state = status.state;
+                txObj.txHash = status.txHash;
+
+                const statusEl = document.getElementById(`pay-status-${txObj.index}`);
+                const itemEl = document.getElementById(`pay-item-${txObj.index}`);
+                const linkEl = document.getElementById(`pay-link-${txObj.index}`);
+
+                if (status.state === 'COMPLETE' && status.txHash) {
+                  completedCount++;
+                  statusEl.textContent = 'Xong';
+                  statusEl.className = 'status-badge completed';
+                  itemEl.className = 'payment-item completed';
+                  linkEl.style.visibility = 'visible';
+                  linkEl.innerHTML = `
+                    <a href="https://testnet.arcscan.app/tx/${status.txHash}" target="_blank" class="tx-link">
+                      ${status.txHash.substring(0, 6)}...${status.txHash.substring(status.txHash.length - 4)} <i data-lucide="external-link" style="width: 12px; height: 12px;"></i>
+                    </a>
+                  `;
+                } else if (status.state === 'FAILED' || status.state === 'ERROR') {
+                  completedCount++;
+                  statusEl.textContent = 'Lỗi';
+                  statusEl.className = 'status-badge completed';
+                  itemEl.style.borderColor = 'rgba(255, 23, 68, 0.3)';
+                  itemEl.style.background = 'rgba(255, 23, 68, 0.02)';
+                }
+              });
+
+              // Update Progress Bar
+              const percentage = Math.round((completedCount / 20) * 100);
+              progressBarFill.style.width = `${percentage}%`;
+              panelPercentage.textContent = `${percentage}%`;
+              panelStatusText.textContent = `Đang xử lý thanh toán: ${completedCount}/20 hoàn thành`;
+
+              // Re-create icons for new elements
+              lucide.createIcons();
+
+              // Completed all 20?
+              if (statusData.state === 'completed' && completedCount === 20) {
+                clearInterval(activeInterval);
+                panelSpinner.style.display = 'none';
+                panelStatusText.textContent = 'Hoàn thành toàn bộ 20 thanh toán tự động!';
+                btnTrigger.disabled = false;
+                walletInput.disabled = false;
+                showToast('Chúc mừng! Đã thực hiện thành công 20 thanh toán tự động không cần gas.');
+              }
+            }
           }
         } catch (err) {
-          console.error('Lỗi khi kiểm tra trạng thái GD:', err);
+          clearInterval(activeInterval);
+          panelSpinner.style.display = 'none';
+          panelStatusText.textContent = 'Lỗi xảy ra trong quá trình chạy demo.';
+          btnTrigger.disabled = false;
+          walletInput.disabled = false;
+          showToast(`Lỗi: ${err.message}`, true);
         }
-      }, 2500);
+      }, 2000);
 
     } catch (err) {
       panelSpinner.style.display = 'none';

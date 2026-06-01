@@ -37,6 +37,7 @@ class Scheduler {
   private triggerRequested: boolean = false;
   private logBuffer: string[] = [];
   private resultsHistory: TaskResult[] = [];
+  private demoRuns: Record<string, { txIds: string[]; state: "processing" | "completed" | "failed"; error?: string }> = {};
 
   constructor() {
     this.logger = new Logger("Scheduler");
@@ -561,7 +562,7 @@ class Scheduler {
         return;
       }
 
-      // API: demo run (20 automated payments)
+      // API: demo run (20 automated payments - async background execution)
       if (url === "/api/demo/run" && method === "POST") {
         let bodyStr = "";
         req.on("data", (chunk) => { bodyStr += chunk; });
@@ -575,29 +576,75 @@ class Scheduler {
               return;
             }
 
-            const wallets = await this.walletManager.getOrCreateWallets();
-            this.logger.info(`[Demo API] Initiating 20 automated payments of 0.0001 USDC to ${walletAddress}...`);
-            
-            const txIds: string[] = [];
-            for (let i = 1; i <= 20; i++) {
-              const txId = await this.walletManager.initiateTransferUSDC(
-                wallets.owner.address,
-                walletAddress,
-                "0.0001"
-              );
-              txIds.push(txId);
-              // Wait 150ms to avoid rate limit
-              await new Promise(r => setTimeout(r, 150));
-            }
+            const runId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+            this.demoRuns[runId] = { txIds: [], state: "processing" };
+
+            // Trigger background async payment process
+            (async () => {
+              try {
+                const wallets = await this.walletManager.getOrCreateWallets();
+                this.logger.info(`[Demo Run ${runId}] Starting 20 automated payments of 0.0001 USDC to ${walletAddress}...`);
+                
+                for (let i = 1; i <= 20; i++) {
+                  // Check if run was marked failed
+                  if (this.demoRuns[runId].state === "failed") break;
+
+                  const txId = await this.walletManager.initiateTransferUSDC(
+                    wallets.owner.address,
+                    walletAddress,
+                    "0.0001"
+                  );
+                  this.demoRuns[runId].txIds.push(txId);
+                  
+                  // Space requests by 1500ms to be 100% safe from 429 rate limits
+                  await new Promise(r => setTimeout(r, 1500));
+                }
+                
+                if (this.demoRuns[runId].state === "processing") {
+                  this.demoRuns[runId].state = "completed";
+                  this.logger.success(`[Demo Run ${runId}] Successfully completed all 20 payments!`);
+                }
+              } catch (err: any) {
+                this.logger.error(`[Demo Run ${runId} Failed] ${err.message}`);
+                this.demoRuns[runId].state = "failed";
+                this.demoRuns[runId].error = err.message;
+              }
+            })();
 
             res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: true, txIds }));
+            res.end(JSON.stringify({ success: true, runId }));
           } catch (err: any) {
-            this.logger.error(`[Demo API Failed] ${err.message}`);
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: err.message }));
           }
         });
+        return;
+      }
+
+      // API: demo run status query
+      if (url.startsWith("/api/demo/run-status") && method === "GET") {
+        try {
+          const parsedUrl = new URL(url, `http://${req.headers.host || "localhost"}`);
+          const runId = parsedUrl.searchParams.get("runId") || "";
+          const run = this.demoRuns[runId];
+
+          if (!run) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: "Demo run not found" }));
+            return;
+          }
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            success: true,
+            state: run.state,
+            txIds: run.txIds,
+            error: run.error || null
+          }));
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: err.message }));
+        }
         return;
       }
 
