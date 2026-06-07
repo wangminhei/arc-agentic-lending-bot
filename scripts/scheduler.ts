@@ -16,6 +16,15 @@ import { WalletManager } from "./wallet-manager.js";
 import { PaymentHandler } from "./payment-handler.js";
 import { TaskExecutor, LENDING_POOL_ABI, type Task, type TaskResult } from "./task-executor.js";
 import { Logger } from "./logger.js";
+import { createGatewayMiddleware, BatchFacilitatorClient } from "@circle-fin/x402-batching/server";
+
+const originalVerify = BatchFacilitatorClient.prototype.verify;
+BatchFacilitatorClient.prototype.verify = function(paymentPayload: any, paymentRequirements: any) {
+  console.log("[x402 Debug] verify() called with:");
+  console.log("  paymentPayload:", JSON.stringify(paymentPayload, null, 2));
+  console.log("  paymentRequirements:", JSON.stringify(paymentRequirements, null, 2));
+  return originalVerify.call(this, paymentPayload, paymentRequirements);
+};
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -325,6 +334,20 @@ class Scheduler {
 
   private startHttpServer(): void {
     const port = parseInt(process.env.PORT || "3000");
+
+    const walletsPath = path.resolve(`./runtime/${WORKER_ID}/state/wallets.json`);
+    let ownerAddress = "";
+    try {
+      if (fs.existsSync(walletsPath)) {
+        const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
+        ownerAddress = wallets.owner?.address || "";
+      }
+    } catch {}
+
+    const gatewayMiddleware = createGatewayMiddleware({
+      sellerAddress: ownerAddress || "0xd7a3c49b5669731693639053d8f4da1ecd31efe0",
+    });
+
     const server = http.createServer(async (req, res) => {
       const url = req.url || "/";
       const method = req.method || "GET";
@@ -678,6 +701,145 @@ class Scheduler {
           res.end(JSON.stringify({ success: false, error: err.message }));
         }
         return;
+      }
+
+      // Helper to run Express middleware in raw http server
+      const runMiddleware = (req: any, res: any, middleware: any): Promise<boolean> => {
+        return new Promise((resolve) => {
+          if (!res.status) {
+            res.status = function (code: number) {
+              this.statusCode = code;
+              return this;
+            };
+          }
+          if (!res.json) {
+            res.json = function (data: any) {
+              this.setHeader("Content-Type", "application/json");
+              this.end(JSON.stringify(data));
+            };
+          }
+          
+          let finished = false;
+          const originalEnd = res.end;
+          res.end = function(...args: any[]) {
+            finished = true;
+            if (res.statusCode >= 400 && args[0]) {
+              console.log(`[x402 Server Response] Status: ${res.statusCode} | Body:`, args[0].toString());
+            }
+            originalEnd.apply(this, args);
+            resolve(false);
+          };
+
+          middleware(req, res, (err: any) => {
+            res.end = originalEnd;
+            if (finished) return;
+            if (err) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: err.message || err }));
+              resolve(false);
+            } else {
+              resolve(true);
+            }
+          });
+        });
+      };
+
+      // API: Premium Quote (x402)
+      if (url === "/api/premium/quote" && method === "GET") {
+        const paid = await runMiddleware(req, res, gatewayMiddleware.require("$0.0001"));
+        if (paid) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            success: true,
+            quote: "BTC target price is $100,000! 🚀",
+            timestamp: new Date().toISOString()
+          }));
+        }
+        return;
+      }
+
+      // API: Premium Dataset (x402)
+      if (url === "/api/premium/dataset" && method === "GET") {
+        const paid = await runMiddleware(req, res, gatewayMiddleware.require("$0.01"));
+        if (paid) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            success: true,
+            dataset: [
+              { date: "2026-06-01", price: 68000 },
+              { date: "2026-06-02", price: 68500 }
+            ],
+            message: "Premium dataset downloaded successfully."
+          }));
+        }
+        return;
+      }
+
+      // API: Premium Compute Service (x402)
+      if (url === "/api/premium/compute" && method === "POST") {
+        const paid = await runMiddleware(req, res, gatewayMiddleware.require("$0.0003"));
+        if (paid) {
+          let bodyStr = "";
+          req.on("data", (chunk) => { bodyStr += chunk; });
+          req.on("end", () => {
+            try {
+              const body = JSON.parse(bodyStr);
+              const text = body.text || "";
+              const wordCount = text.split(/\s+/).filter(Boolean).length;
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: true, wordCount, textLength: text.length }));
+            } catch (err: any) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Invalid JSON body" }));
+            }
+          });
+        }
+        return;
+      }
+
+      // API: Premium Puzzle (x402 EIP-3009 game)
+      if (url === "/api/premium/puzzle") {
+        if (method === "GET") {
+          const paid = await runMiddleware(req, res, gatewayMiddleware.require("$0.005"));
+          if (paid) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              question: "What is the ultimate answer to life, the universe, and everything?"
+            }));
+          }
+          return;
+        } else if (method === "POST") {
+          const paid = await runMiddleware(req, res, gatewayMiddleware.require("$0.01"));
+          if (paid) {
+            let bodyStr = "";
+            req.on("data", (chunk) => { bodyStr += chunk; });
+            req.on("end", () => {
+              try {
+                const body = JSON.parse(bodyStr);
+                if (body.step === 1 && body.answer === "42") {
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(JSON.stringify({
+                    success: true,
+                    question: "What is the acronym for Circle Research Agent?"
+                  }));
+                } else if (body.step === 2 && body.answer === "CRA") {
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(JSON.stringify({
+                    success: true,
+                    message: "Congratulations! You solved the puzzle and claimed the treasure chest containing EIP-3009 secrets!"
+                  }));
+                } else {
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(JSON.stringify({ success: false, error: "Incorrect answer" }));
+                }
+              } catch (err: any) {
+                res.writeHead(400, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ success: false, error: "Invalid JSON body" }));
+              }
+            });
+          }
+          return;
+        }
       }
 
       // Serve static assets from /public or task files

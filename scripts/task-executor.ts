@@ -21,7 +21,29 @@ import fs from "fs";
 import path from "path";
 import { initiateSmartContractPlatformClient } from "@circle-fin/smart-contract-platform";
 import crypto from "crypto";
-import { GatewayClient } from "@circle-fin/x402-batching/client";
+import { GatewayClient, BatchEvmScheme } from "@circle-fin/x402-batching/client";
+
+// Add a 30-day buffer to maxTimeoutSeconds on the client side to prevent "authorization_validity_too_short" from minor clock skews
+const originalCreatePayload = BatchEvmScheme.prototype.createPaymentPayload;
+BatchEvmScheme.prototype.createPaymentPayload = async function(x402Version: any, paymentRequirements: any) {
+  console.log("[x402 Debug Client] createPaymentPayload called! Original maxTimeoutSeconds:", paymentRequirements.maxTimeoutSeconds);
+  const modifiedRequirements = {
+    ...paymentRequirements,
+    maxTimeoutSeconds: (paymentRequirements.maxTimeoutSeconds || 345600) + 2592000
+  };
+  return originalCreatePayload.call(this, x402Version, modifiedRequirements);
+};
+
+const originalGatewayCreatePayload = GatewayClient.prototype.createPaymentPayload;
+GatewayClient.prototype.createPaymentPayload = async function(x402Version: any, paymentRequirements: any) {
+  console.log("[x402 Debug Gateway Client] createPaymentPayload called! Original maxTimeoutSeconds:", paymentRequirements.maxTimeoutSeconds);
+  const modifiedRequirements = {
+    ...paymentRequirements,
+    maxTimeoutSeconds: (paymentRequirements.maxTimeoutSeconds || 345600) + 2592000
+  };
+  return originalGatewayCreatePayload.call(this, x402Version, modifiedRequirements);
+};
+
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
