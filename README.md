@@ -86,6 +86,14 @@ docker-compose logs -f arc-worker-01
 | Explorer    | `https://testnet.arcscan.app`       |
 | Faucet      | `https://faucet.circle.com`         |
 
+### Arc Testnet v0.7.2 Upgrade & Zero7 Hardfork Compatibility
+Mạng testnet Arc đang nâng cấp lên phiên bản **`v0.7.2`** và sẽ kích hoạt hardfork **Zero7** vào ngày **18 tháng 6 năm 2026 lúc 14:00:00 UTC** (tức 21:00:00 giờ Việt Nam).
+*   **Trạng thái tương thích của Bot**: Đã kiểm tra và **hoàn toàn tương thích** với phiên bản `v0.7.2` mới nhất:
+    *   **Giới hạn Gas Cap 30M (mới)**: Mặc định `--rpc.gascap` của các node giảm xuống 30M. Các giao dịch do Agent tự động thực thi rất nhỏ (thường chỉ tốn từ 100k - 500k gas), do đó không bị ảnh hưởng bởi giới hạn này.
+    *   **Từ chối giao dịch pre-EIP-155 (mặc định)**: Phiên bản node `v0.7.2` sẽ từ chối các giao dịch không có replay protection (pre-EIP-155). Bot sử dụng Circle Developer-Controlled Wallets và thư viện `viem`, tất cả các giao dịch được gửi đi đều được ký chuẩn EIP-155 mang Chain ID `5042002`, đảm bảo an toàn tuyệt đối và hoạt động liên tục.
+    *   **Giới hạn Batch JSON-RPC 100 entries**: Bot không gửi các yêu cầu batch JSON-RPC lớn vượt quá giới hạn này nên không bị ảnh hưởng.
+    *   **RPC Endpoints**: URL kết nối chính thức của bot vẫn giữ nguyên `https://rpc.testnet.arc.network` và dự phòng `https://arc-testnet.drpc.org`.
+
 ## Contract Addresses (Arc Testnet)
 
 | Contract            | Address                                      |
