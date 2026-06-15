@@ -34,6 +34,7 @@ An autonomous AI Agent bot executing on-chain tasks on **Arc Testnet** that feat
 *   **Circle Developer-Controlled Wallets:** Programmatic and secure key management enabling the AI Agent to execute autonomous transactions without manual human signing.
 *   **Circle Gateway:** Infrastructure for processing premium agentic resource access, routing pay-per-inference and pay-per-dataset queries.
 *   **Circle CCTP & Bridge Kit:** Automated cross-chain liquidity refuels (Base Sepolia -> Arc Testnet) to rescue collateralized lending positions from liquidation.
+*   **Unified Balance Kit:** Integrated to query consolidated USDC balances across Arc Testnet and Base Sepolia networks.
 *   **Nanopayments (x402-batching):** EIP-3009-based gas-free payment signatures enabling micro-transactions for pay-per-inference computations.
 
 ---
@@ -107,6 +108,7 @@ Our solution showcases how an AI Agent participates in the agentic economy using
     *   **Layer 2 (Emergency Deleverage)**: Automatically sells cirBTC collateral directly on-chain using Oracle prices to repay n debts.
     *   **Layer 3 (Circle CCTP Bridge)**: If the local wallet has no USDC and no cirBTC remains, it triggers Circle CCTP to bridge USDC from Base Sepolia to Arc Testnet to rescue the position.
 3.  **High-Frequency Gas-Free Payments (demo.html)**: The demo page allows anyone to request 20 high-frequency automated payouts. The server processes payments using Circle Developer-Controlled Wallets, with transactions spaced at 1.5s intervals to satisfy rate limits, resulting in rapid, gas-free transfers verified on ArcScan.
+4.  **Unified Balance Kit Integration (scripts/demo-unified-balance.ts)**: We integrated Circle's newly released Unified Balance Kit using the Developer-Controlled Wallets Adapter to easily query consolidated and per-chain balances.
 
 ---
 
@@ -122,6 +124,7 @@ Our solution showcases how an AI Agent participates in the agentic economy using
 *   The **Circle Gateway API** handles batched EIP-3009 signature verification cleanly.
 *   **Developer-Controlled Wallets API** is comprehensive, providing well-structured endpoints for wallet creation, transaction signing, and tracking.
 *   **CCTP** is robust and abstracting the bridging complexity into standard on-chain contracts simplifies the cross-chain treasury movement significantly.
+*   **Unified Balance Kit** makes multi-chain balance queries extremely clean by abstracting the need to query multiple chain RPCs manually.
 
 ### 3. What could be improved & Developer Recommendations
 *   **Clock Skew / validity_too_short Enforcement:** We encountered frequent `authorization_validity_too_short` errors when validating EIP-3009 signatures on Circle Sandbox. The gateway enforces that the `validBefore` timestamp must be at least ~4 days in the future relative to the gateway server time. If the local system clock has even a minor drift (clock skew), or if the default timeout configuration isn't broad enough, the signature is rejected. 
