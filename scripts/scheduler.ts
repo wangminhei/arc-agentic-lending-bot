@@ -89,26 +89,20 @@ class Scheduler {
       const files = fs.readdirSync(resultsDir)
         .filter((file) => file.endsWith(".json"));
       
-      const filesWithTime = files.map((file) => {
-        const filePath = path.join(resultsDir, file);
-        try {
-          const stats = fs.statSync(filePath);
-          return { name: file, mtime: stats.mtimeMs };
-        } catch {
-          return { name: file, mtime: 0 };
-        }
+      // Sort files by timestamp extracted from filename to avoid sequential fs.statSync calls on thousands of files
+      files.sort((a, b) => {
+        const numA = parseFloat((a.match(/\d+/g) || []).pop() || "0");
+        const numB = parseFloat((b.match(/\d+/g) || []).pop() || "0");
+        return numB - numA;
       });
       
-      // Sort newest first
-      filesWithTime.sort((a, b) => b.mtime - a.mtime);
-      
       // Take the top 100 newest files to parse
-      const newestFiles = filesWithTime.slice(0, 100);
+      const newestFiles = files.slice(0, 100);
       
       this.resultsHistory = [];
-      for (const fileObj of newestFiles) {
+      for (const file of newestFiles) {
         try {
-          const content = fs.readFileSync(path.join(resultsDir, fileObj.name), "utf-8");
+          const content = fs.readFileSync(path.join(resultsDir, file), "utf-8");
           const data = JSON.parse(content);
           this.resultsHistory.push(data);
         } catch {}
