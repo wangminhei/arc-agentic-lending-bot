@@ -15,7 +15,8 @@ arc-worker-bot/
 │   ├── payment-handler.ts    # ERC-8183 job lifecycle (nanopayments)
 │   ├── task-executor.ts      # Execute task definitions
 │   ├── logger.ts             # Logger utility
-│   └── setup.ts              # One-time setup script
+│   ├── setup.ts              # One-time setup script
+│   └── demo-unified-balance.ts # Demo Circle Unified Balance Kit (mới)
 ├── tasks/
 │   └── tasks-worker-01.json  # Task definitions
 ├── runtime/
@@ -144,6 +145,19 @@ Dự án cung cấp một trang kiểm thử tương tác độc lập để min
   3. Máy chủ sử dụng Circle Developer-Controlled Wallets thực hiện gửi **20 giao dịch chuyển USDC** liên tiếp đến ví nhận. Phí gas và tiền USDC được tài trợ hoàn toàn bởi ví Owner của Agent.
   4. Các yêu cầu được giãn cách **`1.5 giây`** để tránh hoàn toàn lỗi quá tải `429 Too Many Requests` (Rate limit của Circle Sandbox).
   5. Giao diện hiển thị trực quan tiến trình hoàn thành và cung cấp các link mã băm giao dịch (`txHash`) on-chain liên kết trực tiếp sang ArcScan Explorer để kiểm tra thời gian thực.
+## Demo Số Dư Hợp Nhất Cross-Chain (Unified Balance Kit)
+
+Dự án tích hợp và trình diễn tính năng **Unified Balance Kit** mới nhất của Circle để đơn giản hóa việc quản lý và luân chuyển tài sản xuyên chuỗi:
+
+* **Cách chạy thử nghiệm:**
+  ```bash
+  npm run demo:unified
+  ```
+* **Chức năng thực hiện:**
+  1. Khởi tạo `UnifiedBalanceKit` kết hợp với `CircleWalletsAdapter` (DCW).
+  2. Truy vấn số dư USDC của ví Owner cùng lúc trên hai mạng **Arc Testnet** và **Base Sepolia**.
+  3. Tính toán và hiển thị tổng số dư hợp nhất (Unified Balance) của ví.
+  4. Trình diễn cách gọi hàm `spend()` để tự động rút và mint USDC xuyên chuỗi mà không cần lập trình viên viết code bridge CCTP thủ công.
 
 ## Runtime Files
 
