@@ -69,7 +69,16 @@ const elements = {
   btnLendingDeposit: document.getElementById('btn-lending-deposit'),
   btnLendingBorrow: document.getElementById('btn-lending-borrow'),
   btnLendingRepay: document.getElementById('btn-lending-repay'),
-  btnLendingWithdraw: document.getElementById('btn-lending-withdraw')
+  btnLendingWithdraw: document.getElementById('btn-lending-withdraw'),
+  
+  // AI Elements
+  aiLastAction: document.getElementById('ai-last-action'),
+  aiRunMode: document.getElementById('ai-run-mode'),
+  aiReasoningText: document.getElementById('ai-reasoning-text'),
+  aiDecisionTime: document.getElementById('ai-decision-time'),
+  a2aPurchasedData: document.getElementById('a2a-purchased-data'),
+  a2aReportTime: document.getElementById('a2a-report-time'),
+  btnManualA2a: document.getElementById('btn-manual-a2a')
 };
 
 // Initialize App
@@ -78,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchData();
   initChart();
   setupLendingActions();
+  setupA2AAction();
   
   // Set up polling intervals
   pollInterval = setInterval(fetchData, 3000);
@@ -135,6 +145,7 @@ async function fetchData() {
     updateChart(resultsData);
     updateNanopayments(resultsData);
     updateLending(statusData.lending);
+    updateAIBrain(resultsData);
     
     if (elements.statLastUpdate) {
       elements.statLastUpdate.textContent = new Date().toLocaleTimeString('vi-VN');
@@ -1121,6 +1132,95 @@ function setupLendingActions() {
         showToast('Lỗi kết nối Simulator API!', true);
       } finally {
         btnOracleSimCctp.disabled = false;
+        fetchData();
+      }
+    });
+  }
+}
+
+// ── AI Brain & A2A Commerce UI updater ─────────────────────────────────────
+function updateAIBrain(results) {
+  // Tìm task-032 mới nhất
+  const aiTask = results.find(r => r.taskId === 'task-032');
+  if (aiTask && aiTask.result && aiTask.result.decision) {
+    const decision = aiTask.result.decision;
+    
+    if (elements.aiLastAction) {
+      elements.aiLastAction.textContent = decision.action || 'N/A';
+      elements.aiLastAction.className = 'val ' + (decision.action === 'NO_ACTION' ? 'text-dim' : 'text-success');
+    }
+    
+    if (elements.aiRunMode) {
+      elements.aiRunMode.textContent = decision.mode || 'FALLBACK';
+      elements.aiRunMode.className = 'val ' + (decision.mode === 'REAL_AI' ? 'text-success' : 'text-primary');
+    }
+    
+    const modeBadge = document.getElementById('ai-mode-badge');
+    if (modeBadge) {
+      modeBadge.textContent = decision.mode === 'REAL_AI' ? 'Real AI' : 'Simulated';
+      modeBadge.style.background = decision.mode === 'REAL_AI' ? 'var(--success-color)' : 'var(--primary-color)';
+    }
+
+    if (elements.aiReasoningText) {
+      elements.aiReasoningText.textContent = decision.reason || 'N/A';
+    }
+
+    if (elements.aiDecisionTime) {
+      elements.aiDecisionTime.textContent = new Date(aiTask.executedAt).toLocaleTimeString('vi-VN') + ' ' + new Date(aiTask.executedAt).toLocaleDateString('vi-VN');
+    }
+  }
+
+  // Tìm kết quả mua dữ liệu A2A (từ task-033 hoặc từ trường executionResult của task-032)
+  let a2aResult = null;
+  const a2aTask = results.find(r => r.taskId === 'task-033' && r.status === 'success');
+  if (a2aTask && a2aTask.result && a2aTask.result.result) {
+    a2aResult = a2aTask.result;
+  } else {
+    const aiA2a = results.find(r => r.taskId === 'task-032' && r.status === 'success' && r.result?.executionResult?.execution?.result?.data);
+    if (aiA2a) {
+      a2aResult = aiA2a.result.executionResult.execution;
+    }
+  }
+
+  if (a2aResult && a2aResult.result) {
+    const data = a2aResult.result.data || a2aResult.result.quote || JSON.stringify(a2aResult.result);
+    const time = a2aResult.result.timestamp || a2aResult.executedAt || new Date().toISOString();
+    
+    if (elements.a2aPurchasedData) {
+      elements.a2aPurchasedData.textContent = data;
+    }
+    if (elements.a2aReportTime) {
+      elements.a2aReportTime.textContent = new Date(time).toLocaleTimeString('vi-VN');
+    }
+  }
+}
+
+function setupA2AAction() {
+  if (elements.btnManualA2a) {
+    elements.btnManualA2a.addEventListener('click', async () => {
+      elements.btnManualA2a.disabled = true;
+      const originalHtml = elements.btnManualA2a.innerHTML;
+      elements.btnManualA2a.innerHTML = '<i data-lucide="loader-2" class="animate-spin inline mr-1" size="12"></i> Buying...';
+      lucide.createIcons();
+      
+      try {
+        const res = await fetch('/api/a2a/buy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+          showToast('A2A Commerce: Mua báo cáo dữ liệu thị trường thành công qua x402!');
+        } else {
+          showToast(`Thất bại: ${data.error || 'Giao dịch thất bại'}`, true);
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối API!', true);
+      } finally {
+        elements.btnManualA2a.disabled = false;
+        elements.btnManualA2a.innerHTML = originalHtml;
+        lucide.createIcons();
         fetchData();
       }
     });

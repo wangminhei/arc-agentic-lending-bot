@@ -189,6 +189,9 @@
             <button class="account-tab" data-account-tab="lending">
               Lending & Borrowing <span class="tab-count-badge" id="lending-health-badge">Safe HF</span>
             </button>
+            <button class="account-tab" data-account-tab="ai-hub">
+              AI & A2A Hub <span class="tab-count-badge" id="ai-mode-badge" style="background:var(--primary-color); color:black; font-size: 10px; padding: 2px 6px;">Simulated</span>
+            </button>
             <button class="account-tab" data-account-tab="terminal">
               System logs
             </button>
@@ -409,6 +412,64 @@
                         <span class="lbl">Treasury Risk Strategy</span>
                         <span class="val text-success">Automated Position Hedging (USDC Auto-Deposit if Health Factor < 1.20)</span>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB: AI & A2A HUB -->
+            <div class="account-tab-content" id="account-tab-ai-hub">
+              <div class="lending-dashboard-layout" style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="lending-stats-row" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 0px;">
+                  <div class="lending-stat-box" style="padding: 15px; text-align: left; display: flex; flex-direction: column; gap: 5px;">
+                    <span class="lbl" style="font-size: 0.8rem; color: rgba(255,255,255,0.6);">LAST AI ACTION</span>
+                    <strong class="val text-success" id="ai-last-action" style="font-size: 1.4rem;">N/A</strong>
+                  </div>
+                  <div class="lending-stat-box" style="padding: 15px; text-align: left; display: flex; flex-direction: column; gap: 5px;">
+                    <span class="lbl" style="font-size: 0.8rem; color: rgba(255,255,255,0.6);">AI BRAIN MODE</span>
+                    <strong class="val text-primary" id="ai-run-mode" style="font-size: 1.4rem;">FALLBACK</strong>
+                  </div>
+                  <div class="lending-stat-box" style="padding: 15px; text-align: left; display: flex; flex-direction: column; gap: 5px;">
+                    <span class="lbl" style="font-size: 0.8rem; color: rgba(255,255,255,0.6);">DECISION CYCLE</span>
+                    <strong class="val text-warning" style="font-size: 1.4rem;">Every 10 Polls</strong>
+                  </div>
+                </div>
+                
+                <div class="lending-details-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%;">
+                  <!-- AI Decision Reasoning -->
+                  <div class="lending-control-box" style="background: rgba(255, 255, 255, 0.03); padding: 18px; border-radius: 8px; display: flex; flex-direction: column; gap: 12px;">
+                    <h3 style="margin-top: 0; color: #fff;">AI Brain Reasoning</h3>
+                    <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); line-height: 1.4; margin: 0;">
+                      The AI Brain analyses balance sheet parameters and Health Factors to recommend actions dynamically.
+                    </p>
+                    <div style="background: rgba(0,0,0,0.4); padding: 12px; border-radius: 6px; border-left: 4px solid var(--primary-color); min-height: 70px; display: flex; align-items: center; margin-top: 5px;">
+                      <p id="ai-reasoning-text" style="margin: 0; line-height: 1.4; font-style: italic; font-size: 0.85rem; color: var(--text-main);">
+                        Chưa nhận được quyết định AI nào. Hãy đợi chu kỳ poll tiếp theo hoặc kích hoạt poll ngẫu nhiên.
+                      </p>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 8px;">
+                      <span>Executed at:</span>
+                      <span id="ai-decision-time" class="font-mono">N/A</span>
+                    </div>
+                  </div>
+                  
+                  <!-- A2A Purchased Report -->
+                  <div class="lending-control-box" style="background: rgba(255, 255, 255, 0.03); padding: 18px; border-radius: 8px; display: flex; flex-direction: column; gap: 12px;">
+                    <h3 style="margin-top: 0; color: #fff;">Purchased Market Intelligence</h3>
+                    <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); line-height: 1.4; margin: 0;">
+                      Agent-to-Agent EIP-3009 gas-free transaction details for purchased BTC Oracle analysis.
+                    </p>
+                    <div style="background: rgba(0,0,0,0.4); padding: 12px; border-radius: 6px; border-left: 4px solid var(--success-color); min-height: 70px; display: flex; align-items: center; margin-top: 5px;">
+                      <p id="a2a-purchased-data" style="margin: 0; line-height: 1.4; font-family: var(--font-family-mono); font-size: 0.8rem; color: var(--success-color);">
+                        Chưa có dữ liệu thị trường được mua qua A2A Commerce.
+                      </p>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                      <span>Received at: <strong id="a2a-report-time" style="font-weight: 500;">N/A</strong></span>
+                      <button id="btn-manual-a2a" class="btn btn-success" style="padding: 4px 8px; font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; gap: 4px; border: none; cursor: pointer;">
+                        <i data-lucide="shopping-cart" style="width: 12px; height: 12px;"></i> Buy Report ($0.05 USDC)
+                      </button>
                     </div>
                   </div>
                 </div>

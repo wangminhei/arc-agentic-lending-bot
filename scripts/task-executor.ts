@@ -22,6 +22,7 @@ import path from "path";
 import { initiateSmartContractPlatformClient } from "@circle-fin/smart-contract-platform";
 import crypto from "crypto";
 import { GatewayClient, BatchEvmScheme } from "@circle-fin/x402-batching/client";
+import { AIBrain } from "./ai-brain.js";
 
 // Add a 30-day buffer to maxTimeoutSeconds on the client side to prevent "authorization_validity_too_short" from minor clock skews
 const originalCreatePayload = BatchEvmScheme.prototype.createPaymentPayload;
@@ -167,6 +168,7 @@ export class TaskExecutor {
   private completedOnce: Set<string> = new Set();
   private pollCount: number = 0;
   private scpClient: any;
+  private aiBrain: AIBrain;
 
   constructor(walletManager: WalletManager, paymentHandler: PaymentHandler, workerId = "worker-01") {
     this.walletManager = walletManager;
@@ -184,6 +186,7 @@ export class TaskExecutor {
       apiKey,
       entitySecret,
     });
+    this.aiBrain = new AIBrain();
   }
 
   // ── Execute single task ───────────────────────────────────────────────────
@@ -327,6 +330,12 @@ export class TaskExecutor {
 
         case "lending_borrowing": {
           const r = await this.executeLendingBorrowing(task, wallets);
+          txHash = r.txHash; resultData = r;
+          break;
+        }
+
+        case "ai_brain_decision": {
+          const r = await this.executeAIBrainDecision(task, wallets);
           txHash = r.txHash; resultData = r;
           break;
         }
@@ -1671,6 +1680,171 @@ export class TaskExecutor {
     if (fs.existsSync(f)) {
       try { this.completedOnce = new Set(JSON.parse(fs.readFileSync(f, "utf-8")).completed || []); } catch {}
     }
+  }
+
+  private async executeLendingActionDirect(
+    wallets: WalletPair,
+    action: "deposit" | "borrow" | "repay",
+    token: "USDC" | "EURC",
+    amount: string
+  ): Promise<any> {
+    const dummyTask: Task = {
+      id: `ai-dummy-lending-${Date.now()}`,
+      name: `AI Autonomous ${action}`,
+      type: "lending_borrowing",
+      description: "",
+      enabled: true,
+      schedule: "manual",
+      priority: 1,
+      params: { action, amount, token },
+      deliverable: { type: "json", hash_content: false }
+    };
+    return this.executeLendingBorrowing(dummyTask, wallets);
+  }
+
+  private async executeA2ACommerceDirect(wallets: WalletPair, amount: string): Promise<any> {
+    const dummyTask: Task = {
+      id: `task-033`,
+      name: "A2A Commerce Buy Data",
+      type: "x402_nanopayment",
+      description: "",
+      enabled: true,
+      schedule: "manual",
+      priority: 1,
+      params: {
+        url: "http://localhost:3000/api/a2a/quote",
+        method: "GET"
+      },
+      deliverable: { type: "json", hash_content: true }
+    };
+    return this.executeX402Nanopayment(dummyTask, wallets);
+  }
+
+  private async executeAIBrainDecision(task: Task, wallets: WalletPair): Promise<any> {
+    this.logger.info("  [AI Decision Engine] Đang phân tích trạng thái ví và lending...");
+    
+    // 1. Đọc số dư ví của Owner
+    const ownerUSDCBal = await this.walletManager.getUSDCBalance(wallets.owner.address);
+    const ownerUSDC = parseFloat(ownerUSDCBal.usdc);
+    
+    const ownerEURCRaw = await this.publicClient.readContract({
+      address: EURC_CONTRACT, abi: ERC20_BALANCE_ABI,
+      functionName: "balanceOf", args: [wallets.owner.address as Address],
+    });
+    const ownerEURC = parseFloat(formatUnits(ownerEURCRaw, 6));
+
+    const ownerBTCRaw = await this.publicClient.readContract({
+      address: CIRBTC_CONTRACT, abi: ERC20_BALANCE_ABI,
+      functionName: "balanceOf", args: [wallets.owner.address as Address],
+    });
+    const ownerBTC = parseFloat(formatUnits(ownerBTCRaw, 8));
+
+    // Đọc trạng thái vị thế Lending
+    let collateralUSDC = 0;
+    let collateralCirBTC = 0;
+    let borrowedEURC = 0;
+    let healthFactor = 999.99;
+    let btcPrice = 90000;
+    let repScore = 95;
+
+    try {
+      const contractsPath = path.resolve(`./runtime/${this.workerId}/state/contracts.json`);
+      if (fs.existsSync(contractsPath)) {
+        const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf-8"));
+        const lendingPoolAddress = contracts.multi_collateral_pool;
+        if (lendingPoolAddress) {
+          const [cUSDC, cBTC, bEURC, currentBtcPrice, totalCollateralUSD, maxBorrowEURC, hFactor] = await this.publicClient.readContract({
+            address: lendingPoolAddress as Address,
+            abi: LENDING_POOL_ABI,
+            functionName: "getAccountData",
+            args: [wallets.owner.address as Address],
+          }) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+          
+          collateralUSDC = parseFloat(formatUnits(cUSDC, 6));
+          collateralCirBTC = parseFloat(formatUnits(cBTC, 8));
+          borrowedEURC = parseFloat(formatUnits(bEURC, 6));
+          btcPrice = parseFloat(formatUnits(currentBtcPrice, 6));
+          healthFactor = hFactor === 99999n ? 999.99 : Number(hFactor) / 100;
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`  [AI Decision Engine] Không thể kết nối tới Lending Pool: ${err.message}`);
+    }
+
+    const state = {
+      ownerUSDC,
+      ownerEURC,
+      ownerBTC,
+      collateralUSDC,
+      collateralCirBTC,
+      borrowedEURC,
+      healthFactor,
+      btcPrice,
+      repScore
+    };
+
+    // 2. Gọi AI Brain quyết định
+    const decision = await this.aiBrain.getDecision(state);
+    this.logger.success(`  [AI Decision Engine] Hành động đề xuất: ${decision.action} | Lý do: ${decision.reason}`);
+
+    // 3. Thực thi hành động
+    let executionResult: any = { decision };
+    let txHash: string | undefined;
+
+    if (decision.action === "DEPOSIT_COLLATERAL") {
+      const amountStr = parseFloat(decision.amount).toFixed(2);
+      this.logger.info(`  [AI Execute] Tiến hành nạp ${amountStr} USDC thế chấp...`);
+      try {
+        const r = await this.executeLendingActionDirect(wallets, "deposit", "USDC", amountStr);
+        txHash = r.txHash;
+        executionResult.execution = r;
+      } catch (err: any) {
+        this.logger.error(`  [AI Execute Failed] Nạp thế chấp thất bại: ${err.message}`);
+        executionResult.error = err.message;
+      }
+    } else if (decision.action === "BORROW_EURC") {
+      const amountStr = parseFloat(decision.amount).toFixed(2);
+      this.logger.info(`  [AI Execute] Tiến hành vay ${amountStr} EURC...`);
+      try {
+        const r = await this.executeLendingActionDirect(wallets, "borrow", "EURC", amountStr);
+        txHash = r.txHash;
+        executionResult.execution = r;
+      } catch (err: any) {
+        this.logger.error(`  [AI Execute Failed] Vay EURC thất bại: ${err.message}`);
+        executionResult.error = err.message;
+      }
+    } else if (decision.action === "REPAY_DEBT") {
+      const amountStr = parseFloat(decision.amount).toFixed(2);
+      this.logger.info(`  [AI Execute] Tiến hành trả bớt nợ ${amountStr} EURC...`);
+      try {
+        const r = await this.executeLendingActionDirect(wallets, "repay", "EURC", amountStr);
+        txHash = r.txHash;
+        executionResult.execution = r;
+      } catch (err: any) {
+        this.logger.error(`  [AI Execute Failed] Trả nợ thất bại: ${err.message}`);
+        executionResult.error = err.message;
+      }
+    } else if (decision.action === "A2A_COMMERCE") {
+      this.logger.info(`  [AI Execute] Tiến hành mua dữ liệu từ Agent 2 (Validator) giá ${decision.amount} USDC...`);
+      try {
+        const r = await this.executeA2ACommerceDirect(wallets, decision.amount);
+        txHash = r.txHash;
+        executionResult.execution = r;
+      } catch (err: any) {
+        this.logger.error(`  [AI Execute Failed] Giao dịch A2A thất bại: ${err.message}`);
+        executionResult.error = err.message;
+      }
+    } else {
+      this.logger.info(`  [AI Execute] Giữ nguyên vị thế, không thực hiện hành động.`);
+    }
+
+    return {
+      state,
+      decision,
+      executionResult,
+      txHash,
+      executedAt: new Date().toISOString()
+    };
   }
 
   private saveOnceState(): void {

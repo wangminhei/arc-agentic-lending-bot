@@ -7,7 +7,8 @@
     "start": "tsx --env-file=.env scripts/scheduler.ts",
     "worker": "tsx --env-file=.env scripts/scheduler.ts",
     "setup": "tsx --env-file=.env scripts/setup.ts",
-    "demo:unified": "tsx --env-file=.env scripts/demo-unified-balance.ts"
+    "demo:unified": "tsx --env-file=.env scripts/demo-unified-balance.ts",
+    "swap:eurc": "tsx --env-file=.env scripts/swap-eurc-to-usdc.ts"
   },
   "dependencies": {
     "@circle-fin/adapter-circle-wallets": "^1.3.1",

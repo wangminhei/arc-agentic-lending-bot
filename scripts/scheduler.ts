@@ -342,6 +342,18 @@ class Scheduler {
       sellerAddress: ownerAddress || "0xd7a3c49b5669731693639053d8f4da1ecd31efe0",
     });
 
+    let validatorAddress = "";
+    try {
+      if (fs.existsSync(walletsPath)) {
+        const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
+        validatorAddress = wallets.validator?.address || "";
+      }
+    } catch {}
+
+    const a2aGatewayMiddleware = createGatewayMiddleware({
+      sellerAddress: validatorAddress || "0xb8d47900c3ee9e7d26f0bd595e8c08bd5f964ca8",
+    });
+
     const server = http.createServer(async (req, res) => {
       const url = req.url || "/";
       const method = req.method || "GET";
@@ -460,6 +472,49 @@ class Scheduler {
               priority: 10,
               params: { action, amount, token },
               deliverable: { type: "json", hash_content: false }
+            };
+
+            const result = await this.taskExecutor.executeTask(manualTask, wallets);
+            
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(result));
+          } catch (err: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+        return;
+      }
+
+      // API: manual A2A purchase
+      if (url === "/api/a2a/buy" && method === "POST") {
+        let bodyStr = "";
+        req.on("data", (chunk) => { bodyStr += chunk; });
+        req.on("end", async () => {
+          try {
+            const walletsPath = path.resolve(`./runtime/${WORKER_ID}/state/wallets.json`);
+            if (!fs.existsSync(walletsPath)) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Wallets not initialized" }));
+              return;
+            }
+            const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
+
+            this.logger.info(`[UI Request] Manual A2A Commerce purchase triggered`);
+            
+            const manualTask: Task = {
+              id: `manual-a2a-${Date.now()}`,
+              name: "Manual A2A Commerce Buy Data",
+              type: "x402_nanopayment",
+              description: "Manual UI initiated A2A Commerce Quote Purchase",
+              enabled: true,
+              schedule: "manual",
+              priority: 10,
+              params: {
+                url: "http://localhost:3000/api/a2a/quote",
+                method: "GET"
+              },
+              deliverable: { type: "json", hash_content: true }
             };
 
             const result = await this.taskExecutor.executeTask(manualTask, wallets);
@@ -746,6 +801,22 @@ class Scheduler {
           res.end(JSON.stringify({
             success: true,
             quote: "BTC target price is $100,000! 🚀",
+            timestamp: new Date().toISOString()
+          }));
+        }
+        return;
+      }
+
+      // API: Agent-to-Agent Commerce (x402)
+      if (url === "/api/a2a/quote" && method === "GET") {
+        const paid = await runMiddleware(req, res, a2aGatewayMiddleware.require("$0.05"));
+        if (paid) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            success: true,
+            seller: "Agent 2 (Validator)",
+            buyer: "Agent 1 (Owner)",
+            data: "DỰ BÁO XU HƯỚNG BTC: Giá Bitcoin dự kiến dao động từ $89,500 - $91,200 trong 24h tới. Khuyến nghị: Giữ vị thế thế chấp an toàn.",
             timestamp: new Date().toISOString()
           }));
         }

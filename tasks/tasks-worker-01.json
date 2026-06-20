@@ -459,6 +459,31 @@
         "amount": "5.00"
       },
       "deliverable": { "type": "json", "hash_content": false }
+    },
+    {
+      "id": "task-032",
+      "name": "AI Brain Decision Engine",
+      "type": "ai_brain_decision",
+      "description": "Tự động phân tích các thông số tài chính và đưa ra quyết định hành động bằng AI Brain",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 8,
+      "params": {},
+      "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-033",
+      "name": "A2A Commerce Buy Data",
+      "type": "x402_nanopayment",
+      "description": "Thực hiện giao dịch mua báo cáo phân tích BTC từ Agent 2 (Validator) thanh toán gas-free USDC",
+      "enabled": true,
+      "schedule": "manual",
+      "priority": 3,
+      "params": {
+        "url": "http://localhost:3000/api/a2a/quote",
+        "method": "GET"
+      },
+      "deliverable": { "type": "json", "hash_content": true }
     }
   ]
 }
