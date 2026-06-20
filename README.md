@@ -116,6 +116,27 @@ Mạng testnet Arc đang nâng cấp lên phiên bản **`v0.7.2`** và sẽ kí
 | `payment_processing`   | ERC-8183 full job lifecycle (5 USDC escrow)  |
 | `reputation_building`  | ERC-8004 giveFeedback on ReputationRegistry  |
 | `lending_borrowing`    | Deposit USDC/cirBTC collateral, borrow EURC, auto-manage health factor |
+| `ai_brain_decision`    | Chạy bộ não AI (Gemini hoặc Fallback) phân tích trạng thái ví/lending và đề xuất hành động tối ưu |
+| `x402_nanopayment`     | Thực hiện giao dịch mua báo cáo dữ liệu A2A Commerce thanh toán gas-free USDC qua chuẩn x402 |
+
+## AI Decision Engine & Agent-to-Agent (A2A) Commerce
+
+Hệ thống bổ sung năng lực tự chủ toàn diện cho AI Agent thông qua trí tuệ nhân tạo và giao thức thương mại chéo Agent:
+
+1. **AI Decision Engine (`scripts/ai-brain.ts`)**:
+   * AI Agent sử dụng mô hình LLM Gemini API để phân tích động Health Factor, số dư ví, điểm uy tín để đưa ra hành động tối ưu thay vì chạy theo checklist cứng nhắc.
+   * **Cơ chế Fallback thông minh**: Nếu người dùng **không có GEMINI_API_KEY**, hệ thống sẽ tự động kích hoạt **Fallback Mode (Simulated AI Brain)**. Logic này giả lập phân tích tài chính dựa trên tập luật chặt chẽ, chạy mượt mà 100% không lo crash/lỗi.
+
+2. **Agent-to-Agent (A2A) Commerce Protocol**:
+   * Agent 1 (Owner - Buyer) kết nối với Agent 2 (Validator - Seller) để mua báo cáo phân tích xu hướng giá BTC thời gian thực với giá `0.05 USDC`.
+   * Giao dịch được bảo mật và thực hiện **gas-free** cho người dùng cuối nhờ chuẩn **x402 Micropayments / EIP-3009** thông qua Circle Developer-Controlled Wallets.
+
+3. **Giao Diện Điều Khiển "AI & A2A Hub"**:
+   * Dashboard tại `http://localhost:3000` được bổ sung tab mới hiển thị:
+     * Quyết định gần nhất của AI (`LAST AI ACTION`) và lý do giải thích chi tiết bằng tiếng Việt.
+     * Chế độ hoạt động hiện tại (`REAL_AI` hoặc `FALLBACK`).
+     * Nội dung báo cáo xu hướng giá BTC nhận được từ Agent 2 sau khi giao dịch hoàn tất.
+     * Nút **"Buy Report ($0.05 USDC)"** cho phép kích hoạt giao dịch mua dữ liệu A2A thủ công nhanh chóng.
 
 ## Agentic Multi-Collateral & Risk Governance Upgrade (Tính năng nâng cao)
 
