@@ -250,6 +250,12 @@ export class TaskExecutor {
           break;
         }
 
+        case "usdc_transfer_memo": {
+          const r = await this.executeUSDCTransferMemo(task, wallets);
+          txHash = r.txHash; resultData = r;
+          break;
+        }
+
         case "eurc_transfer": {
           const r = await this.executeEURCTransfer(task, wallets);
           txHash = r.txHash; resultData = r;
@@ -501,6 +507,30 @@ export class TaskExecutor {
       fromWallet.id, fromWallet.address, toAddress, amount
     );
     return { txHash, amount, direction, from: fromWallet.address, to: toAddress, transferredAt: new Date().toISOString() };
+  }
+
+  // ── task: usdc_transfer_memo ──────────────────────────────────────────────
+
+  private async executeUSDCTransferMemo(task: Task, wallets: WalletPair): Promise<any> {
+    const amount = task.params.amount || "1";
+    const direction = task.params.direction || "owner_to_validator";
+    const fromWallet = direction === "owner_to_validator" ? wallets.owner : wallets.validator;
+    const toAddress  = direction === "owner_to_validator" ? wallets.validator.address : wallets.owner.address;
+    const memoText = task.params.memoText || `invoice-ref-${Date.now()}`;
+    const memoIdText = task.params.memoIdText || `inv-${Date.now().toString().slice(-6)}`;
+
+    this.logger.info(`  USDC transfer with memo ${amount} USDC → ${direction.replace("_", "→")} | Memo: "${memoText}"`);
+
+    // Check balance
+    const bal = await this.walletManager.getUSDCBalance(fromWallet.address);
+    if (parseFloat(bal.usdc) < parseFloat(amount) + 0.5) {
+      throw new Error(`Insufficient balance: ${bal.usdc} USDC`);
+    }
+
+    const txHash = await (this.walletManager as any).transferUSDCWithMemo(
+      fromWallet.id, fromWallet.address, toAddress, amount, memoText, memoIdText
+    );
+    return { txHash, amount, direction, from: fromWallet.address, to: toAddress, memoText, memoIdText, transferredAt: new Date().toISOString() };
   }
 
   // ── task: eurc_transfer ───────────────────────────────────────────────────

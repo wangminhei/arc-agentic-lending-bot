@@ -5,7 +5,8 @@
  */
 
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
-import { createPublicClient, http, fallback, formatUnits, type Address } from "viem";
+import { createPublicClient, http, fallback, formatUnits, type Address, encodeFunctionData, keccak256, stringToHex, parseUnits, createWalletClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { arcTestnet } from "viem/chains";
 import fs from "fs";
 import path from "path";
@@ -303,6 +304,115 @@ export class WalletManager {
     amount: string
   ): Promise<string> {
     return this.transferToken(fromWalletId, fromAddress, toAddress, amount, USDC_CONTRACT, "USDC");
+  }
+
+  // ── Transfer USDC with Transaction Memo ────────────────────────────────────
+
+  async transferUSDCWithMemo(
+    fromWalletId: string,
+    fromAddress: string,
+    toAddress: string,
+    amount: string,
+    memoText: string,
+    memoIdText: string
+  ): Promise<string> {
+    const walletStateDir = path.resolve(`./runtime/${this.workerId}/state`);
+    const localWalletFile = path.join(walletStateDir, "nanopay-wallet.json");
+
+    if (!fs.existsSync(localWalletFile)) {
+      throw new Error("Local nanopay wallet not initialized. Run nanopayment task first.");
+    }
+
+    const state = JSON.parse(fs.readFileSync(localWalletFile, "utf-8"));
+    const privateKey = state.privateKey;
+    const account = privateKeyToAccount(privateKey);
+    const localAddress = account.address;
+
+    // Check EOA balance
+    const eoaBal = await this.getUSDCBalance(localAddress);
+    const amountVal = parseFloat(amount);
+    
+    // Auto-fund EOA if balance is low (< amount + 1 USDC)
+    if (parseFloat(eoaBal.usdc) < amountVal + 1.0) {
+      console.log(`  [Memo Refuel] EOA balance low (${eoaBal.usdc} USDC). Funding 5.00 USDC from Circle owner...`);
+      await this.transferUSDC(fromWalletId, fromAddress, localAddress, "5.00");
+      // Wait for confirmation
+      await new Promise(r => setTimeout(r, 5000));
+    }
+
+    console.log(`  Transferring ${amount} USDC from EOA ${localAddress} → ${toAddress} with memo: "${memoText}"...`);
+
+    const memoAddress = "0x5294E9927c3306DcBaDb03fe70b92e01cCede505";
+    const transferData = encodeFunctionData({
+      abi: [
+        {
+          name: "transfer",
+          type: "function",
+          stateMutability: "nonpayable",
+          inputs: [
+            { name: "to", type: "address" },
+            { name: "amount", type: "uint256" },
+          ],
+          outputs: [{ name: "", type: "bool" }],
+        },
+      ],
+      functionName: "transfer",
+      args: [toAddress as Address, parseUnits(amount, USDC_DECIMALS)],
+    });
+
+    const memoId = keccak256(stringToHex(memoIdText));
+    const memoBytes = stringToHex(memoText);
+
+    // Call Memo contract from EOA using viem walletClient
+    const apisPath = path.resolve("./config/apis.json");
+    let rpcUrls: string[] = ["https://rpc.testnet.arc.network"];
+    if (fs.existsSync(apisPath)) {
+      try {
+        const apis = JSON.parse(fs.readFileSync(apisPath, "utf-8"));
+        if (apis.arc && apis.arc.rpc_urls) {
+          rpcUrls = apis.arc.rpc_urls;
+        } else if (apis.arc && apis.arc.rpc) {
+          rpcUrls = [apis.arc.rpc];
+        }
+      } catch {}
+    }
+    if (process.env.ARC_RPC_URL) {
+      rpcUrls = [process.env.ARC_RPC_URL];
+    }
+
+    const walletClient = createWalletClient({
+      account,
+      chain: arcTestnet,
+      transport: fallback(rpcUrls.map((url) => http(url))),
+    });
+
+    const hash = await walletClient.writeContract({
+      address: memoAddress,
+      abi: [
+        {
+          type: "function",
+          name: "memo",
+          stateMutability: "nonpayable",
+          inputs: [
+            { name: "target", type: "address" },
+            { name: "data", type: "bytes" },
+            { name: "memoId", type: "bytes32" },
+            { name: "memoData", type: "bytes" }
+          ],
+          outputs: []
+        }
+      ],
+      functionName: "memo",
+      args: [USDC_CONTRACT, transferData, memoId, memoBytes],
+    });
+
+    // Wait for transaction confirmation
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success") {
+      throw new Error(`Memo transaction reverted: ${hash}`);
+    }
+
+    return hash;
   }
 
   // ── Transfer EURC between wallets ─────────────────────────────────────────

@@ -484,6 +484,22 @@
         "method": "GET"
       },
       "deliverable": { "type": "json", "hash_content": true }
+    },
+    {
+      "id": "task-034",
+      "name": "Transfer USDC with Transaction Memo",
+      "type": "usdc_transfer_memo",
+      "description": "Gửi 1 USDC từ owner sang validator kèm theo Transaction Memo để quản lý on-chain context",
+      "enabled": true,
+      "schedule": "every_10_polls",
+      "priority": 4,
+      "params": {
+        "direction": "owner_to_validator",
+        "amount": "1",
+        "memoText": "invoice-ref-2026-0999",
+        "memoIdText": "inv-0999"
+      },
+      "deliverable": { "type": "tx_hash", "hash_content": false }
     }
   ]
 }

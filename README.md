@@ -118,6 +118,7 @@ Mạng testnet Arc đang nâng cấp lên phiên bản **`v0.7.2`** và sẽ kí
 | `lending_borrowing`    | Deposit USDC/cirBTC collateral, borrow EURC, auto-manage health factor |
 | `ai_brain_decision`    | Chạy bộ não AI (Gemini hoặc Fallback) phân tích trạng thái ví/lending và đề xuất hành động tối ưu |
 | `x402_nanopayment`     | Thực hiện giao dịch mua báo cáo dữ liệu A2A Commerce thanh toán gas-free USDC qua chuẩn x402 |
+| `usdc_transfer_memo`   | Gửi USDC kèm theo thông tin Transaction Memo (invoice ID, payout ref) on-chain |
 
 ## AI Decision Engine & Agent-to-Agent (A2A) Commerce
 
@@ -187,6 +188,19 @@ Dự án tích hợp và trình diễn tính năng **Unified Balance Kit** mới
   2. Truy vấn số dư USDC của ví Owner cùng lúc trên hai mạng **Arc Testnet** và **Base Sepolia**.
   3. Tính toán và hiển thị tổng số dư hợp nhất (Unified Balance) của ví.
   4. Trình diễn cách gọi hàm `spend()` để tự động rút và mint USDC xuyên chuỗi mà không cần lập trình viên viết code bridge CCTP thủ công.
+
+## Arc Transaction Memos
+
+Dự án tích hợp tính năng **Arc Transaction Memos** để đính kèm ngữ cảnh có cấu trúc (như ID hóa đơn, mã thanh toán) vào giao dịch chuyển khoản USDC trên Arc Testnet.
+
+* **Cơ Chế EOA Fallback Bypass:** 
+  Hợp đồng `Memo` trên Arc (`0x5294E9927c3306DcBaDb03fe70b92e01cCede505`) yêu cầu cuộc gọi phải được thực hiện trực tiếp từ ví **EOA**. Để giải quyết việc ví Circle SCA bị chặn, bot sử dụng ví EOA cục bộ (lưu private key tại `nanopay-wallet.json` trong runtime) để ký giao dịch, đồng thời tích hợp cơ chế tự động chuyển tiền (Refuel) từ ví Circle SCA sang ví EOA khi số dư xuống thấp dưới `amount + 1.0 USDC`.
+* **Cách chạy thử nghiệm độc lập:**
+  ```bash
+  npm run demo:memo
+  ```
+* **Tự động chạy định kỳ:**
+  Tác vụ `task-034` được cấu hình trong `tasks/tasks-worker-01.json` với loại `usdc_transfer_memo`, cho phép bot tự động chạy và gửi USDC kèm memo on-chain sau mỗi 10 chu kỳ polling.
 
 ## Runtime Files
 
