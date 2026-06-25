@@ -23,6 +23,7 @@ import { initiateSmartContractPlatformClient } from "@circle-fin/smart-contract-
 import crypto from "crypto";
 import { GatewayClient, BatchEvmScheme } from "@circle-fin/x402-batching/client";
 import { AIBrain } from "./ai-brain.js";
+import axios from "axios";
 
 // Add a 30-day buffer to maxTimeoutSeconds on the client side to prevent "authorization_validity_too_short" from minor clock skews
 const originalCreatePayload = BatchEvmScheme.prototype.createPaymentPayload;
@@ -1732,22 +1733,131 @@ export class TaskExecutor {
     return this.executeLendingBorrowing(dummyTask, wallets);
   }
 
-  private async executeA2ACommerceDirect(wallets: WalletPair, amount: string): Promise<any> {
-    const dummyTask: Task = {
-      id: `task-033`,
-      name: "A2A Commerce Buy Data",
-      type: "x402_nanopayment",
-      description: "",
-      enabled: true,
-      schedule: "manual",
-      priority: 1,
-      params: {
-        url: "http://localhost:3000/api/a2a/quote",
-        method: "GET"
-      },
-      deliverable: { type: "json", hash_content: true }
-    };
-    return this.executeX402Nanopayment(dummyTask, wallets);
+  public async executeA2ACommerceDirect(wallets: WalletPair, amount: string): Promise<any> {
+    this.logger.info("  [Escrow A2A] Bắt đầu quy trình giao dịch A2A Ký Quỹ...");
+
+    // 1. Đọc địa chỉ escrow contract từ contracts.json
+    const contractsPath = path.resolve(`./runtime/${this.workerId}/state/contracts.json`);
+    if (!fs.existsSync(contractsPath)) {
+      throw new Error("Không tìm thấy contracts.json. Hãy deploy Escrow contract trước.");
+    }
+    const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf-8"));
+    const escrowAddress = contracts.escrow;
+    if (!escrowAddress) {
+      throw new Error("Chưa cấu hình địa chỉ hợp đồng Escrow.");
+    }
+
+    // 2. Gọi API để lấy báo giá và jobId từ Seller (Agent 2)
+    const quoteUrl = "http://localhost:3000/api/a2a/escrow/quote";
+    const quoteResp = await axios.get(quoteUrl);
+    const { success, jobId, amount: quoteAmount, seller } = quoteResp.data;
+    if (!success || !jobId) {
+      throw new Error("Không lấy được báo giá ký quỹ từ Seller.");
+    }
+
+    this.logger.info(`  [Escrow A2A] Nhận báo giá từ Seller: ${quoteAmount} USDC | Job ID: ${jobId}`);
+
+    // 3. Kiểm tra Spending Limit cục bộ trước khi ký quỹ
+    const check = await this.walletManager.checkSpendingLimit(quoteAmount);
+    if (!check.allowed) {
+      throw new Error(`[Spending Limit Violation] ${check.reason}`);
+    }
+
+    const amountRaw = BigInt(Math.round(parseFloat(quoteAmount) * 10 ** 6)).toString(); // USDC decimals = 6
+    const duration = "60"; // 60 giây timeout để dễ test Auto-Refund
+
+    // 4. Owner SCA approve USDC cho Escrow contract
+    this.logger.info(`  [Escrow A2A] Owner đang phê duyệt (Approve) ${quoteAmount} USDC cho Escrow contract...`);
+    const approveTxHash = await this.walletManager.executeContract(
+      wallets.owner.address,
+      USDC_CONTRACT,
+      "approve(address,uint256)",
+      [escrowAddress, amountRaw],
+      "Approve USDC for Escrow"
+    );
+    this.logger.info(`  [Escrow A2A] Approve thành công. Tx: ${approveTxHash}`);
+
+    // 5. Owner SCA nạp USDC cọc vào Escrow contract (createEscrow)
+    this.logger.info(`  [Escrow A2A] Owner đang thực hiện Ký Quỹ (Create Escrow) ${quoteAmount} USDC...`);
+    const escrowTxHash = await this.walletManager.executeContract(
+      wallets.owner.address,
+      escrowAddress,
+      "createEscrow(bytes32,address,uint256,uint256)",
+      [jobId, seller, amountRaw, duration],
+      "Create Escrow"
+    );
+    this.logger.info(`  [Escrow A2A] Ký quỹ thành công! Tx: ${escrowTxHash}`);
+
+    // 6. Ghi nhận chi tiêu vào spending tracker
+    this.walletManager.recordSpending(quoteAmount);
+
+    // 7. Gọi API Seller để yêu cầu deliver dữ liệu (gửi kèm jobId)
+    const deliverUrl = "http://localhost:3000/api/a2a/escrow/deliver";
+    this.logger.info(`  [Escrow A2A] Đang yêu cầu Seller bàn giao dữ liệu với Job ID: ${jobId}...`);
+    
+    let deliverSuccess = false;
+    let reportData = "";
+    try {
+      const deliverResp = await axios.post(deliverUrl, { jobId });
+      if (deliverResp.data && deliverResp.data.success) {
+        deliverSuccess = true;
+        reportData = deliverResp.data.data;
+      }
+    } catch (err: any) {
+      this.logger.warn(`  [Escrow A2A] Seller bàn giao dữ liệu thất bại hoặc từ chối cung cấp: ${err.message}`);
+    }
+
+    if (deliverSuccess && reportData) {
+      this.logger.success(`  [Escrow A2A] Nhận dữ liệu thành công!`);
+      this.logger.info(`  [Escrow A2A] Nội dung báo cáo: "${reportData}"`);
+
+      // 8. Giải ngân (Release Escrow) cho Seller
+      this.logger.info(`  [Escrow A2A] Owner đang giải ngân (Release Escrow) cho Seller...`);
+      const releaseTxHash = await this.walletManager.executeContract(
+        wallets.owner.address,
+        escrowAddress,
+        "release(bytes32)",
+        [jobId],
+        "Release Escrow"
+      );
+      this.logger.success(`  [Escrow A2A] Giải ngân thành công! Seller đã nhận được ${quoteAmount} USDC. Tx: ${releaseTxHash}`);
+
+      return {
+        success: true,
+        mode: "Escrow_Success",
+        jobId,
+        escrowAddress,
+        escrowTxHash,
+        releaseTxHash,
+        reportData,
+        amount: quoteAmount
+      };
+    } else {
+      // Bàn giao thất bại (giả lập lỗi Seller). Thực hiện Auto-Refund sau khi hết timeout 60 giây
+      this.logger.warn(`  [Escrow A2A] Không nhận được dữ liệu. Chờ 60 giây timeout để tự động hoàn tiền (Refund)...`);
+      await new Promise(r => setTimeout(r, 62000)); // Chờ 62 giây để block timestamp chắc chắn vượt qua timeout
+
+      this.logger.info(`  [Escrow A2A] Hết thời gian chờ. Owner đang thực hiện rút tiền cọc (Refund)...`);
+      const refundTxHash = await this.walletManager.executeContract(
+        wallets.owner.address,
+        escrowAddress,
+        "refund(bytes32)",
+        [jobId],
+        "Refund Escrow"
+      );
+      this.logger.success(`  [Escrow A2A] Hoàn tiền ký quỹ thành công về ví Owner! Tx: ${refundTxHash}`);
+
+      return {
+        success: false,
+        mode: "Escrow_Refunded",
+        jobId,
+        escrowAddress,
+        escrowTxHash,
+        refundTxHash,
+        amount: quoteAmount,
+        error: "Seller failed to deliver data, deposit was refunded."
+      };
+    }
   }
 
   private async executeAIBrainDecision(task: Task, wallets: WalletPair): Promise<any> {

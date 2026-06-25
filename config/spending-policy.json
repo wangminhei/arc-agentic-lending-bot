@@ -1,0 +1,5 @@
+{
+  "enabled": true,
+  "maxDailyLimit": "10.00",
+  "maxPerTxLimit": "2.00"
+}

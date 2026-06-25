@@ -238,6 +238,78 @@ export class WalletManager {
     console.log(`  Validator (${pair.validator.address}): ${validatorBal.usdc} USDC`);
   }
 
+  // ── Spending Policy & Tracker helpers ──────────────────────────────────────
+
+  getSpendingPolicy(): { enabled: boolean; maxDailyLimit: string; maxPerTxLimit: string } {
+    const policyFile = path.resolve("./config/spending-policy.json");
+    if (!fs.existsSync(policyFile)) {
+      return { enabled: true, maxDailyLimit: "10.00", maxPerTxLimit: "2.00" };
+    }
+    try {
+      return JSON.parse(fs.readFileSync(policyFile, "utf-8"));
+    } catch {
+      return { enabled: true, maxDailyLimit: "10.00", maxPerTxLimit: "2.00" };
+    }
+  }
+
+  getSpendingTracker(): { date: string; spent: string } {
+    const trackerFile = path.join(this.stateDir, "spending-tracker.json");
+    const today = new Date().toISOString().split("T")[0];
+    if (!fs.existsSync(trackerFile)) {
+      return { date: today, spent: "0.00" };
+    }
+    try {
+      const data = JSON.parse(fs.readFileSync(trackerFile, "utf-8"));
+      if (data.date !== today) {
+        return { date: today, spent: "0.00" };
+      }
+      return data;
+    } catch {
+      return { date: today, spent: "0.00" };
+    }
+  }
+
+  saveSpendingTracker(tracker: { date: string; spent: string }): void {
+    const trackerFile = path.join(this.stateDir, "spending-tracker.json");
+    fs.writeFileSync(trackerFile, JSON.stringify(tracker, null, 2));
+  }
+
+  async checkSpendingLimit(amount: string): Promise<{ allowed: boolean; reason?: string }> {
+    const policy = this.getSpendingPolicy();
+    if (!policy.enabled) {
+      return { allowed: true };
+    }
+
+    const amtVal = parseFloat(amount);
+    const maxPerTx = parseFloat(policy.maxPerTxLimit);
+    if (amtVal > maxPerTx) {
+      return {
+        allowed: false,
+        reason: `Giao dịch ${amount} USDC vượt quá hạn mức tối đa cho phép của mỗi giao dịch (Max Per Tx: ${policy.maxPerTxLimit} USDC)`
+      };
+    }
+
+    const tracker = this.getSpendingTracker();
+    const currentSpent = parseFloat(tracker.spent);
+    const maxDaily = parseFloat(policy.maxDailyLimit);
+    if (currentSpent + amtVal > maxDaily) {
+      return {
+        allowed: false,
+        reason: `Giao dịch ${amount} USDC làm tổng chi tiêu trong ngày (${(currentSpent + amtVal).toFixed(2)} USDC) vượt quá hạn mức hàng ngày (Max Daily: ${policy.maxDailyLimit} USDC)`
+      };
+    }
+
+    return { allowed: true };
+  }
+
+  recordSpending(amount: string): void {
+    const tracker = this.getSpendingTracker();
+    const currentSpent = parseFloat(tracker.spent);
+    const amtVal = parseFloat(amount);
+    tracker.spent = (currentSpent + amtVal).toFixed(2);
+    this.saveSpendingTracker(tracker);
+  }
+
   // ── Transfer Token (generic) ──────────────────────────────────────────────
   
   async transferToken(
@@ -248,6 +320,14 @@ export class WalletManager {
     tokenAddress: string,
     tokenSymbol: string
   ): Promise<string> {
+    // Check spending limit if token is USDC
+    if (tokenSymbol === "USDC") {
+      const check = await this.checkSpendingLimit(amount);
+      if (!check.allowed) {
+        throw new Error(`[Spending Limit Violation] ${check.reason}`);
+      }
+    }
+
     console.log(`  Transferring ${amount} ${tokenSymbol} → ${toAddress}...`);
 
     const tx = await this.circleClient.createTransaction({
@@ -262,7 +342,14 @@ export class WalletManager {
     const txId = tx.data?.id;
     if (!txId) throw new Error(`Failed to initiate ${tokenSymbol} transfer`);
 
-    return this.waitForTx(txId, `transfer ${amount} ${tokenSymbol}`);
+    const txHash = await this.waitForTx(txId, `transfer ${amount} ${tokenSymbol}`);
+    
+    // Record spending if token is USDC
+    if (tokenSymbol === "USDC") {
+      this.recordSpending(amount);
+    }
+
+    return txHash;
   }
 
   // ── Initiate Transfer without awaiting confirmation (for batch demo) ───────
@@ -316,6 +403,12 @@ export class WalletManager {
     memoText: string,
     memoIdText: string
   ): Promise<string> {
+    // Check spending limit
+    const check = await this.checkSpendingLimit(amount);
+    if (!check.allowed) {
+      throw new Error(`[Spending Limit Violation] ${check.reason}`);
+    }
+
     const walletStateDir = path.resolve(`./runtime/${this.workerId}/state`);
     const localWalletFile = path.join(walletStateDir, "nanopay-wallet.json");
 
@@ -412,6 +505,7 @@ export class WalletManager {
       throw new Error(`Memo transaction reverted: ${hash}`);
     }
 
+    this.recordSpending(amount);
     return hash;
   }
 

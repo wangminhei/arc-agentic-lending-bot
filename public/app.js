@@ -88,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initChart();
   setupLendingActions();
   setupA2AAction();
+  setupPolicyActions();
   
   // Set up polling intervals
   pollInterval = setInterval(fetchData, 3000);
@@ -146,6 +147,7 @@ async function fetchData() {
     updateNanopayments(resultsData);
     updateLending(statusData.lending);
     updateAIBrain(resultsData);
+    updatePolicyStatus();
     
     if (elements.statLastUpdate) {
       elements.statLastUpdate.textContent = new Date().toLocaleTimeString('vi-VN');
@@ -1220,6 +1222,170 @@ function setupA2AAction() {
       } finally {
         elements.btnManualA2a.disabled = false;
         elements.btnManualA2a.innerHTML = originalHtml;
+        lucide.createIcons();
+        fetchData();
+      }
+    });
+  }
+}
+
+async function updatePolicyStatus() {
+  try {
+    const res = await fetch('/api/policy/status');
+    const data = await res.json();
+    if (data.success) {
+      const { policy, tracker, simulateSellerFailure } = data;
+      
+      const policyDaily = document.getElementById('policy-daily');
+      const policyPertx = document.getElementById('policy-pertx');
+      const policySpent = document.getElementById('policy-spent');
+      const inputDaily = document.getElementById('input-daily-limit');
+      const inputPertx = document.getElementById('input-pertx-limit');
+      const checkEnabled = document.getElementById('checkbox-policy-enabled');
+      
+      if (policyDaily) policyDaily.textContent = `${parseFloat(policy.maxDailyLimit).toFixed(2)} USDC`;
+      if (policyPertx) policyPertx.textContent = `${parseFloat(policy.maxPerTxLimit).toFixed(2)} USDC`;
+      if (policySpent) policySpent.textContent = `${parseFloat(tracker.spent).toFixed(2)} USDC`;
+      
+      if (checkEnabled) checkEnabled.checked = policy.enabled;
+      if (inputDaily && document.activeElement !== inputDaily) inputDaily.value = policy.maxDailyLimit;
+      if (inputPertx && document.activeElement !== inputPertx) inputPertx.value = policy.maxPerTxLimit;
+      
+      const toggleBtn = document.getElementById('btn-toggle-failure');
+      const toggleIcon = document.getElementById('toggle-failure-icon');
+      if (toggleBtn) {
+        if (simulateSellerFailure) {
+          toggleBtn.textContent = 'Sim Seller Failure: ON';
+          toggleBtn.style.background = '#7a2a2a';
+          toggleBtn.style.color = '#fff';
+          toggleBtn.style.border = '1px solid #ff1744';
+        } else {
+          toggleBtn.textContent = 'Sim Seller Failure: OFF';
+          toggleBtn.style.background = '#3a1a1a';
+          toggleBtn.style.color = 'rgba(255,255,255,0.7)';
+          toggleBtn.style.border = '1px solid #7a2a2a';
+        }
+        if (toggleIcon) {
+          toggleBtn.prepend(toggleIcon);
+          toggleIcon.className = simulateSellerFailure ? 'lucide-toggle-right text-danger' : 'lucide-toggle-left';
+        }
+      }
+    }
+  } catch (err) {}
+}
+
+function setupPolicyActions() {
+  const btnUpdatePolicy = document.getElementById('btn-update-policy');
+  if (btnUpdatePolicy) {
+    btnUpdatePolicy.addEventListener('click', async () => {
+      const enabled = document.getElementById('checkbox-policy-enabled').checked;
+      const maxDailyLimit = document.getElementById('input-daily-limit').value;
+      const maxPerTxLimit = document.getElementById('input-pertx-limit').value;
+      
+      btnUpdatePolicy.disabled = true;
+      try {
+        const res = await fetch('/api/policy/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled, maxDailyLimit, maxPerTxLimit })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Cập nhật chính sách chi tiêu thành công!');
+          updatePolicyStatus();
+        }
+      } catch (err) {
+        showToast('Không thể cập nhật chính sách!', true);
+      } finally {
+        btnUpdatePolicy.disabled = false;
+      }
+    });
+  }
+
+  const btnToggleFailure = document.getElementById('btn-toggle-failure');
+  if (btnToggleFailure) {
+    btnToggleFailure.addEventListener('click', async () => {
+      btnToggleFailure.disabled = true;
+      try {
+        const statusRes = await fetch('/api/policy/status');
+        const statusData = await statusRes.json();
+        const currentFail = statusData.simulateSellerFailure;
+        
+        const res = await fetch('/api/policy/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ simulateSellerFailure: !currentFail })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(!currentFail ? 'Đã bật giả lập lỗi Seller. Giao dịch Escrow sẽ kích hoạt Auto-Refund sau 60 giây!' : 'Đã tắt giả lập lỗi Seller.');
+          updatePolicyStatus();
+        }
+      } catch (err) {
+        showToast('Lỗi cập nhật giả lập!', true);
+      } finally {
+        btnToggleFailure.disabled = false;
+      }
+    });
+  }
+
+  const btnRunEscrowA2a = document.getElementById('btn-run-escrow-a2a');
+  if (btnRunEscrowA2a) {
+    btnRunEscrowA2a.addEventListener('click', async () => {
+      btnRunEscrowA2a.disabled = true;
+      const originalHtml = btnRunEscrowA2a.innerHTML;
+      btnRunEscrowA2a.innerHTML = '<i data-lucide="loader-2" class="animate-spin inline mr-1" size="12"></i> Running...';
+      lucide.createIcons();
+      
+      const ledgerLogs = document.getElementById('escrow-ledger-logs');
+      if (ledgerLogs) {
+        ledgerLogs.innerHTML = `<div style="color: var(--primary-color);">[${new Date().toLocaleTimeString()}] Bắt đầu giao dịch Escrow A2A...</div>`;
+      }
+
+      try {
+        const res = await fetch('/api/a2a/buy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+          const result = data.result;
+          if (result && result.success) {
+            showToast('Giao dịch Escrow A2A hoàn tất thành công!');
+            if (ledgerLogs) {
+              ledgerLogs.innerHTML = `
+                <div style="color: var(--primary-color);">[${new Date().toLocaleTimeString()}] Bắt đầu: Đã lấy báo giá ${result.amount} USDC</div>
+                <div style="color: var(--warning-color);">[${new Date().toLocaleTimeString()}] Ký quỹ: Gửi cọc thành công vào Escrow. Tx: <a href="https://testnet.arcscan.app/tx/${result.escrowTxHash}" target="_blank" style="color:var(--warning-color); text-decoration:underline;">${result.escrowTxHash.substring(0,8)}...</a></div>
+                <div style="color: var(--success-color);">[${new Date().toLocaleTimeString()}] Delivery: Nhận dữ liệu thành công!</div>
+                <div style="color: var(--success-color);">[${new Date().toLocaleTimeString()}] Giải ngân: Đã mở khóa ví cho Seller. Tx: <a href="https://testnet.arcscan.app/tx/${result.releaseTxHash}" target="_blank" style="color:var(--success-color); text-decoration:underline;">${result.releaseTxHash.substring(0,8)}...</a></div>
+              `;
+            }
+          } else if (result && !result.success) {
+            showToast('Seller không giao dữ liệu. Hoàn tiền đặt cọc!', true);
+            if (ledgerLogs) {
+              ledgerLogs.innerHTML = `
+                <div style="color: var(--primary-color);">[${new Date().toLocaleTimeString()}] Bắt đầu: Đã lấy báo giá ${result.amount} USDC</div>
+                <div style="color: var(--warning-color);">[${new Date().toLocaleTimeString()}] Ký quỹ: Gửi cọc thành công vào Escrow. Tx: <a href="https://testnet.arcscan.app/tx/${result.escrowTxHash}" target="_blank" style="color:var(--warning-color); text-decoration:underline;">${result.escrowTxHash.substring(0,8)}...</a></div>
+                <div style="color: var(--danger-color);">[${new Date().toLocaleTimeString()}] Lỗi: Seller không giao hàng!</div>
+                <div style="color: var(--danger-color);">[${new Date().toLocaleTimeString()}] Timeout: Chờ 60 giây hết hạn cọc...</div>
+                <div style="color: var(--success-color);">[${new Date().toLocaleTimeString()}] Refund: Rút lại tiền đặt cọc thành công! Tx: <a href="https://testnet.arcscan.app/tx/${result.refundTxHash}" target="_blank" style="color:var(--success-color); text-decoration:underline;">${result.refundTxHash.substring(0,8)}...</a></div>
+              `;
+            }
+          } else {
+            showToast(`Thất bại: ${data.error || 'Giao dịch thất bại'}`, true);
+          }
+        } else {
+          showToast(`Lỗi: ${data.error || 'Giao dịch thất bại'}`, true);
+          if (ledgerLogs) {
+            ledgerLogs.innerHTML = `<div style="color: var(--danger-color);">Lỗi giao dịch: ${data.error}</div>`;
+          }
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối API!', true);
+      } finally {
+        btnRunEscrowA2a.disabled = false;
+        btnRunEscrowA2a.innerHTML = originalHtml;
         lucide.createIcons();
         fetchData();
       }

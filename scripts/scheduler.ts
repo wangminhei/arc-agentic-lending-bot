@@ -17,6 +17,7 @@ import { PaymentHandler } from "./payment-handler.js";
 import { TaskExecutor, LENDING_POOL_ABI, type Task, type TaskResult } from "./task-executor.js";
 import { Logger } from "./logger.js";
 import { createGatewayMiddleware, BatchFacilitatorClient } from "@circle-fin/x402-batching/server";
+import crypto from "crypto";
 
 const originalVerify = BatchFacilitatorClient.prototype.verify;
 BatchFacilitatorClient.prototype.verify = function(paymentPayload: any, paymentRequirements: any) {
@@ -47,6 +48,7 @@ class Scheduler {
   private logBuffer: string[] = [];
   private resultsHistory: TaskResult[] = [];
   private demoRuns: Record<string, { txIds: string[]; state: "processing" | "completed" | "failed"; error?: string }> = {};
+  private simulateSellerFailure: boolean = false;
 
   constructor() {
     this.logger = new Logger("Scheduler");
@@ -438,6 +440,160 @@ class Scheduler {
         return;
       }
 
+      // API: policy status
+      if (url === "/api/policy/status" && method === "GET") {
+        const policy = this.walletManager.getSpendingPolicy();
+        const tracker = this.walletManager.getSpendingTracker();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          success: true,
+          policy,
+          tracker,
+          simulateSellerFailure: this.simulateSellerFailure
+        }));
+        return;
+      }
+
+      // API: update policy
+      if (url === "/api/policy/update" && method === "POST") {
+        let bodyStr = "";
+        req.on("data", (chunk) => { bodyStr += chunk; });
+        req.on("end", async () => {
+          try {
+            const body = JSON.parse(bodyStr);
+            const { enabled, maxDailyLimit, maxPerTxLimit, simulateSellerFailure } = body;
+            
+            if (simulateSellerFailure !== undefined) {
+              this.simulateSellerFailure = simulateSellerFailure;
+            }
+
+            const policyFile = path.resolve("./config/spending-policy.json");
+            let policy = this.walletManager.getSpendingPolicy();
+            if (enabled !== undefined) policy.enabled = enabled;
+            if (maxDailyLimit !== undefined) policy.maxDailyLimit = maxDailyLimit;
+            if (maxPerTxLimit !== undefined) policy.maxPerTxLimit = maxPerTxLimit;
+
+            fs.writeFileSync(policyFile, JSON.stringify(policy, null, 2));
+            this.logger.info(`[UI Request] Updated spending policy: enabled=${policy.enabled}, daily=${policy.maxDailyLimit}, perTx=${policy.maxPerTxLimit}. Simulate Failure: ${this.simulateSellerFailure}`);
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true, policy, simulateSellerFailure: this.simulateSellerFailure }));
+          } catch (err: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+        return;
+      }
+
+      // API: A2A Escrow Quote
+      if (url === "/api/a2a/escrow/quote" && method === "GET") {
+        const walletsPath = path.resolve(`./runtime/${WORKER_ID}/state/wallets.json`);
+        if (!fs.existsSync(walletsPath)) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "Wallets not initialized" }));
+          return;
+        }
+        const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
+        const jobId = "0x" + crypto.randomBytes(32).toString("hex");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          success: true,
+          jobId,
+          amount: "0.05",
+          seller: wallets.validator.address,
+          description: "Premium Market Trend Intelligence Quote via Escrow"
+        }));
+        return;
+      }
+
+      // API: A2A Escrow Deliver (Verify on-chain deposit)
+      if (url === "/api/a2a/escrow/deliver" && method === "POST") {
+        let bodyStr = "";
+        req.on("data", (chunk) => { bodyStr += chunk; });
+        req.on("end", async () => {
+          try {
+            const body = JSON.parse(bodyStr);
+            const { jobId } = body;
+            if (!jobId) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Missing jobId" }));
+              return;
+            }
+
+            if (this.simulateSellerFailure) {
+              this.logger.warn(`[Escrow A2A] Giả lập Seller lỗi. Từ chối bàn giao dữ liệu cho Job ID: ${jobId}`);
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Simulated Seller Failure" }));
+              return;
+            }
+
+            // Kiểm tra on-chain xem đã cọc chưa
+            const contractsPath = path.resolve(`./runtime/${WORKER_ID}/state/contracts.json`);
+            if (!fs.existsSync(contractsPath)) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Contracts config not found" }));
+              return;
+            }
+            const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf-8"));
+            const escrowAddress = contracts.escrow;
+            if (!escrowAddress) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Escrow address not found" }));
+              return;
+            }
+
+            const publicClient = this.walletManager.getPublicClient();
+            const escrowData = await publicClient.readContract({
+              address: escrowAddress as Address,
+              abi: [
+                {
+                  name: "escrows",
+                  type: "function",
+                  stateMutability: "view",
+                  inputs: [{ name: "jobId", type: "bytes32" }],
+                  outputs: [
+                    { name: "buyer", type: "address" },
+                    { name: "seller", type: "address" },
+                    { name: "amount", type: "uint256" },
+                    { name: "released", type: "bool" },
+                    { name: "refunded", type: "bool" },
+                    { name: "timeout", type: "uint256" }
+                  ]
+                }
+              ],
+              functionName: "escrows",
+              args: [jobId]
+            }) as [string, string, bigint, boolean, boolean, bigint];
+
+            const [buyer, seller, amount, released, refunded, timeout] = escrowData;
+            if (amount === 0n) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "No escrow deposit found for this jobId" }));
+              return;
+            }
+
+            if (released || refunded) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Escrow already settled" }));
+              return;
+            }
+
+            this.logger.success(`[Escrow A2A] Xác thực thành công tiền cọc on-chain cho Job ID: ${jobId}. Đang bàn giao dữ liệu...`);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              success: true,
+              data: "DỰ BÁO XU HƯỚNG BTC (Quy Trình Escrow): Giá Bitcoin dự kiến dao động từ $89,500 - $91,200 trong 24h tới. Khuyến nghị: Giữ thế chấp an toàn.",
+              timestamp: new Date().toISOString()
+            }));
+          } catch (err: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+        return;
+      }
+
       // API: lending action
       if (url === "/api/lending/action" && method === "POST") {
         let bodyStr = "";
@@ -500,27 +656,11 @@ class Scheduler {
             }
             const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
 
-            this.logger.info(`[UI Request] Manual A2A Commerce purchase triggered`);
-            
-            const manualTask: Task = {
-              id: `manual-a2a-${Date.now()}`,
-              name: "Manual A2A Commerce Buy Data",
-              type: "x402_nanopayment",
-              description: "Manual UI initiated A2A Commerce Quote Purchase",
-              enabled: true,
-              schedule: "manual",
-              priority: 10,
-              params: {
-                url: "http://localhost:3000/api/a2a/quote",
-                method: "GET"
-              },
-              deliverable: { type: "json", hash_content: true }
-            };
-
-            const result = await this.taskExecutor.executeTask(manualTask, wallets);
+            this.logger.info(`[UI Request] Manual A2A Commerce purchase triggered via Escrow`);
+            const result = await (this.taskExecutor as any).executeA2ACommerceDirect(wallets, "0.05");
             
             res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(result));
+            res.end(JSON.stringify({ status: "success", result }));
           } catch (err: any) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: err.message }));
