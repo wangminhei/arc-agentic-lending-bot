@@ -10,8 +10,10 @@
 
 import fs from "fs";
 import path from "path";
-import http from "http";
-import { formatUnits, type Address } from "viem";
+import nodeHttp from "http";
+import { formatUnits, type Address, createPublicClient, createWalletClient, http, parseAbi } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { arcTestnet } from "viem/chains";
 import { WalletManager } from "./wallet-manager.js";
 import { PaymentHandler } from "./payment-handler.js";
 import { TaskExecutor, LENDING_POOL_ABI, type Task, type TaskResult } from "./task-executor.js";
@@ -356,7 +358,7 @@ class Scheduler {
       sellerAddress: validatorAddress || "0xb8d47900c3ee9e7d26f0bd595e8c08bd5f964ca8",
     });
 
-    const server = http.createServer(async (req, res) => {
+    const server = nodeHttp.createServer(async (req, res) => {
       const url = req.url || "/";
       const method = req.method || "GET";
 
@@ -594,6 +596,201 @@ class Scheduler {
         return;
       }
 
+      // API: CCIP & Chainlink Oracle Status
+      if (url === "/api/ccip/status" && method === "GET") {
+        try {
+          const contractsPath = path.resolve(`./runtime/${WORKER_ID}/state/contracts.json`);
+          if (!fs.existsSync(contractsPath)) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: "contracts.json not found" }));
+            return;
+          }
+          const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf-8"));
+          const poolAddress = contracts.multi_collateral_pool;
+          const btcPriceFeed = contracts.btc_price_feed || "";
+          const ccipRouter = contracts.ccip_router || "";
+          const ccipReceiver = contracts.ccip_receiver || "";
+
+          let useChainlinkOracle = false;
+          if (poolAddress) {
+            const rpcUrl = process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network";
+            const publicClient = createPublicClient({
+              chain: arcTestnet,
+              transport: http(rpcUrl),
+            });
+            try {
+              useChainlinkOracle = await publicClient.readContract({
+                address: poolAddress as Address,
+                abi: [{
+                  name: "useChainlinkOracle",
+                  type: "function",
+                  stateMutability: "view",
+                  inputs: [],
+                  outputs: [{ name: "", type: "bool" }]
+                }],
+                functionName: "useChainlinkOracle"
+              });
+            } catch (e: any) {
+              this.logger.error(`Error reading useChainlinkOracle from pool: ${e.message}`);
+            }
+          }
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            success: true,
+            btcPriceFeed,
+            ccipRouter,
+            ccipReceiver,
+            useChainlinkOracle
+          }));
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: err.message }));
+        }
+        return;
+      }
+
+      // API: Toggle Chainlink Oracle Mode
+      if (url === "/api/ccip/oracle-mode" && method === "POST") {
+        let bodyStr = "";
+        req.on("data", (chunk) => { bodyStr += chunk; });
+        req.on("end", async () => {
+          try {
+            const body = JSON.parse(bodyStr);
+            const { useChainlink } = body;
+            if (useChainlink === undefined) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Missing useChainlink parameter" }));
+              return;
+            }
+
+            const contractsPath = path.resolve(`./runtime/${WORKER_ID}/state/contracts.json`);
+            const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf-8"));
+            const poolAddress = contracts.multi_collateral_pool;
+
+            const walletsPath = path.resolve(`./runtime/${WORKER_ID}/state/wallets.json`);
+            const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
+
+            this.logger.info(`[UI Request] Toggling Chainlink Oracle mode: ${useChainlink}`);
+
+            const txHash = await this.walletManager.executeContract(
+              wallets.owner.address,
+              poolAddress,
+              "setUseChainlinkOracle(bool)",
+              [useChainlink],
+              "Toggle Chainlink Oracle"
+            );
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true, useChainlink, txHash }));
+          } catch (err: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+        return;
+      }
+
+      // API: Simulate receiving deposit via Chainlink CCIP
+      if (url === "/api/ccip/simulate-receive" && method === "POST") {
+        let bodyStr = "";
+        req.on("data", (chunk) => { bodyStr += chunk; });
+        req.on("end", async () => {
+          try {
+            const body = JSON.parse(bodyStr);
+            const { amount } = body;
+            if (!amount) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ success: false, error: "Missing amount parameter" }));
+              return;
+            }
+
+            const contractsPath = path.resolve(`./runtime/${WORKER_ID}/state/contracts.json`);
+            const contracts = JSON.parse(fs.readFileSync(contractsPath, "utf-8"));
+            const routerAddress = contracts.ccip_router;
+            const receiverAddress = contracts.ccip_receiver;
+
+            const stateDir = path.resolve(`./runtime/${WORKER_ID}/state`);
+            const walletFile = path.join(stateDir, "nanopay-wallet.json");
+            const walletState = JSON.parse(fs.readFileSync(walletFile, "utf8"));
+            const privateKey = walletState.privateKey as `0x${string}`;
+            const account = privateKeyToAccount(privateKey);
+
+            const walletsPath = path.resolve(`./runtime/${WORKER_ID}/state/wallets.json`);
+            const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
+            const agentAddress = wallets.owner.address;
+
+            const rpcUrl = process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network";
+            const publicClient = createPublicClient({
+              chain: arcTestnet,
+              transport: http(rpcUrl),
+            });
+            const walletClient = createWalletClient({
+              account,
+              chain: arcTestnet,
+              transport: http(rpcUrl),
+            });
+
+            const amountRaw = BigInt(Math.round(parseFloat(amount) * 10 ** 6));
+            
+            const coder = (await import("viem")).encodeAbiParameters(
+              [{ type: "address" }, { type: "uint256" }],
+              [agentAddress as Address, amountRaw]
+            );
+
+            this.logger.info(`[UI Request] Simulating CCIP Message from Base Sepolia: deposit ${amount} USDC to Agent ${agentAddress}...`);
+
+            const usdcAddress = "0x3600000000000000000000000000000000000000";
+            
+            console.log(`Sim CCIP Step 1: Funding CCIPReceiver with ${amount} USDC...`);
+            const transferAbi = parseAbi(["function transfer(address to, uint256 value) external returns (bool)"]);
+            const fundTx = await walletClient.writeContract({
+              address: usdcAddress,
+              abi: transferAbi,
+              functionName: "transfer",
+              args: [receiverAddress as Address, amountRaw],
+            });
+            await publicClient.waitForTransactionReceipt({ hash: fundTx });
+            console.log(`Receiver funded. Tx: ${fundTx}`);
+
+            console.log("Sim CCIP Step 2: Triggering Router simulateReceiveMessage...");
+            const routerAbi = parseAbi([
+              "function simulateReceiveMessage(address receiver, uint64 sourceChainSelector, address sender, bytes calldata data, address token, uint256 tokenAmount) external"
+            ]);
+            const BASE_SEPOLIA_SELECTOR = 1034497123587106507n;
+            
+            const simTx = await walletClient.writeContract({
+              address: routerAddress as Address,
+              abi: routerAbi,
+              functionName: "simulateReceiveMessage",
+              args: [
+                receiverAddress as Address,
+                BASE_SEPOLIA_SELECTOR,
+                account.address,
+                coder,
+                usdcAddress,
+                amountRaw
+              ]
+            });
+            
+            console.log(`CCIP Simulation completed on Router. Tx: ${simTx}`);
+            const receipt = await publicClient.waitForTransactionReceipt({ hash: simTx });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              success: true,
+              amount,
+              txHash: simTx,
+              messageId: receipt.transactionHash
+            }));
+          } catch (err: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+        return;
+      }
+
       // API: lending action
       if (url === "/api/lending/action" && method === "POST") {
         let bodyStr = "";
@@ -705,16 +902,67 @@ class Scheduler {
             }
             const wallets = JSON.parse(fs.readFileSync(walletsPath, "utf-8"));
 
-            const priceRaw = BigInt(price) * 10n ** 6n;
-            this.logger.info(`[UI Request] Simulating BTC price oracle update: $${price}`);
+            const rpcUrl = process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network";
+            const publicClient = createPublicClient({
+              chain: arcTestnet,
+              transport: http(rpcUrl),
+            });
 
-            const txHash = await this.walletManager.executeContract(
-              wallets.owner.address,
-              lendingPoolAddress,
-              "setBTCPrice(uint256)",
-              [priceRaw.toString()],
-              "Update BTC Oracle Price"
-            );
+            let useChainlink = false;
+            try {
+              useChainlink = await publicClient.readContract({
+                address: lendingPoolAddress as Address,
+                abi: [{
+                  name: "useChainlinkOracle",
+                  type: "function",
+                  stateMutability: "view",
+                  inputs: [],
+                  outputs: [{ name: "", type: "bool" }]
+                }],
+                functionName: "useChainlinkOracle"
+              });
+            } catch {}
+
+            let txHash = "";
+            if (useChainlink) {
+              const aggAddress = contracts.btc_price_feed;
+              if (!aggAddress) {
+                throw new Error("Chainlink Price Feed not deployed");
+              }
+              this.logger.info(`[UI Request] Simulating BTC price Chainlink Oracle update: $${price}`);
+              
+              const stateDir = path.resolve(`./runtime/${WORKER_ID}/state`);
+              const walletFile = path.join(stateDir, "nanopay-wallet.json");
+              const walletState = JSON.parse(fs.readFileSync(walletFile, "utf8"));
+              const privateKey = walletState.privateKey as `0x${string}`;
+              const account = privateKeyToAccount(privateKey);
+              
+              const walletClient = createWalletClient({
+                account,
+                chain: arcTestnet,
+                transport: http(rpcUrl),
+              });
+              
+              const priceAgg = BigInt(price) * 10n ** 8n;
+              const aggAbi = parseAbi(["function updateAnswer(int256 newAnswer) external"]);
+              txHash = await walletClient.writeContract({
+                address: aggAddress as Address,
+                abi: aggAbi,
+                functionName: "updateAnswer",
+                args: [priceAgg],
+              });
+              await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+            } else {
+              const priceRaw = BigInt(price) * 10n ** 6n;
+              this.logger.info(`[UI Request] Simulating BTC price Mock Oracle update: $${price}`);
+              txHash = await this.walletManager.executeContract(
+                wallets.owner.address,
+                lendingPoolAddress,
+                "setBTCPrice(uint256)",
+                [priceRaw.toString()],
+                "Update BTC Oracle Price"
+              );
+            }
 
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: true, price: price.toString(), txHash }));

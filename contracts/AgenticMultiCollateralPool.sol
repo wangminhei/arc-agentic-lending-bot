@@ -5,6 +5,15 @@ interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+}
+
+interface AggregatorV3Interface {
+    function decimals() external view returns (uint8);
+    function description() external view returns (string memory);
+    function version() external view returns (uint256);
+    function getRoundData(uint80 _roundId) external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
+    function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
 }
 
 contract AgenticMultiCollateralPool {
@@ -12,6 +21,10 @@ contract AgenticMultiCollateralPool {
     address public eurcToken;
     address public cirbtcToken;
     address public owner;
+    
+    // Chainlink price feed configs
+    address public btcPriceFeed;
+    bool public useChainlinkOracle;
     
     // Simulating LTV = 80% (Base) and Exchange Rate: 1.10 EURC per USD (scaled by 100)
     uint256 public constant EXCHANGE_RATE = 110;
@@ -54,9 +67,26 @@ contract AgenticMultiCollateralPool {
         btcPrice = 90000 * 10**6; // Initial price of BTC = $90,000
     }
     
+    function setBTCPriceFeed(address _feed) external onlyOwner {
+        btcPriceFeed = _feed;
+    }
+    
+    function setUseChainlinkOracle(bool _use) external onlyOwner {
+        useChainlinkOracle = _use;
+    }
+    
     function setBTCPrice(uint256 newPrice) external onlyOwner {
         btcPrice = newPrice;
         emit PriceUpdated(newPrice);
+    }
+    
+    function getBTCPrice() public view returns (uint256) {
+        if (useChainlinkOracle && btcPriceFeed != address(0)) {
+            (, int256 answer, , , ) = AggregatorV3Interface(btcPriceFeed).latestRoundData();
+            require(answer > 0, "Invalid oracle price");
+            return uint256(answer) / 100; // Convert 8 decimals (Chainlink standard) to 6 decimals
+        }
+        return btcPrice;
     }
     
     function updateReputation(address user, uint256 score) external onlyOwner {
@@ -85,6 +115,17 @@ contract AgenticMultiCollateralPool {
         emit DepositedUSDC(msg.sender, amount);
     }
     
+    // Allow third-party contracts (like CCIP receivers) to deposit USDC for a user
+    function depositUSDCFor(address user, uint256 amount) external {
+        require(amount > 0, "Amount must be > 0");
+        require(IERC20(usdcToken).transferFrom(msg.sender, address(this), amount), "USDC transfer failed");
+        
+        positions[user].collateralUSDC += amount;
+        positions[user].lastUpdated = block.timestamp;
+        
+        emit DepositedUSDC(user, amount);
+    }
+    
     function depositCirBTC(uint256 amount) external {
         require(amount > 0, "Amount must be > 0");
         require(IERC20(cirbtcToken).transferFrom(msg.sender, address(this), amount), "cirBTC transfer failed");
@@ -99,9 +140,10 @@ contract AgenticMultiCollateralPool {
         require(amount > 0, "Amount must be > 0");
         
         UserPosition storage pos = positions[msg.sender];
+        uint256 currentBtcPrice = getBTCPrice();
         
         // Calculate max borrow capacity with reputation LTV
-        uint256 totalCollateralUSD = pos.collateralUSDC + (pos.collateralCirBTC * btcPrice) / 10**8;
+        uint256 totalCollateralUSD = pos.collateralUSDC + (pos.collateralCirBTC * currentBtcPrice) / 10**8;
         uint256 userLTV = getUserLTV(msg.sender);
         uint256 maxBorrowEURC = (totalCollateralUSD * userLTV * EXCHANGE_RATE) / 10000;
         
@@ -138,7 +180,8 @@ contract AgenticMultiCollateralPool {
         require(pos.collateralUSDC >= amount, "Withdrawing more than deposited");
         
         uint256 remainingUSDC = pos.collateralUSDC - amount;
-        uint256 totalCollateralUSD = remainingUSDC + (pos.collateralCirBTC * btcPrice) / 10**8;
+        uint256 currentBtcPrice = getBTCPrice();
+        uint256 totalCollateralUSD = remainingUSDC + (pos.collateralCirBTC * currentBtcPrice) / 10**8;
         uint256 userLTV = getUserLTV(msg.sender);
         uint256 maxBorrowEURC = (totalCollateralUSD * userLTV * EXCHANGE_RATE) / 10000;
         
@@ -158,7 +201,8 @@ contract AgenticMultiCollateralPool {
         require(pos.collateralCirBTC >= amount, "Withdrawing more than deposited");
         
         uint256 remainingCirBTC = pos.collateralCirBTC - amount;
-        uint256 totalCollateralUSD = pos.collateralUSDC + (remainingCirBTC * btcPrice) / 10**8;
+        uint256 currentBtcPrice = getBTCPrice();
+        uint256 totalCollateralUSD = pos.collateralUSDC + (remainingCirBTC * currentBtcPrice) / 10**8;
         uint256 userLTV = getUserLTV(msg.sender);
         uint256 maxBorrowEURC = (totalCollateralUSD * userLTV * EXCHANGE_RATE) / 10000;
         
@@ -173,23 +217,24 @@ contract AgenticMultiCollateralPool {
     }
     
     // Emergency deleveraging function: Automatically sells/burns cirBTC to repay EURC debt
-    // scaled dynamically on-chain using simulated price oracle.
     function emergencyDeleverage(uint256 cirBTCAmount) external {
         require(cirBTCAmount > 0, "Amount must be > 0");
         UserPosition storage pos = positions[msg.sender];
         require(pos.collateralCirBTC >= cirBTCAmount, "Deleveraging more cirBTC than deposited");
         require(pos.borrowedEURC > 0, "No debt to deleverage");
         
-        // Calculation: usdValue = (cirBTCAmount * btcPrice) / 10**8 (6 decimals)
+        uint256 currentBtcPrice = getBTCPrice();
+        
+        // Calculation: usdValue = (cirBTCAmount * currentBtcPrice) / 10**8 (6 decimals)
         // eurcRepaid = (usdValue * EXCHANGE_RATE) / 100 (6 decimals)
-        uint256 usdValue = (cirBTCAmount * btcPrice) / 10**8;
+        uint256 usdValue = (cirBTCAmount * currentBtcPrice) / 10**8;
         uint256 eurcRepaid = (usdValue * EXCHANGE_RATE) / 100;
         
         if (eurcRepaid > pos.borrowedEURC) {
             eurcRepaid = pos.borrowedEURC;
             // Recalculate exact cirBTCAmount required to avoid overpaying
             uint256 requiredUSD = (eurcRepaid * 100) / EXCHANGE_RATE;
-            cirBTCAmount = (requiredUSD * 10**8) / btcPrice;
+            cirBTCAmount = (requiredUSD * 10**8) / currentBtcPrice;
         }
         
         pos.collateralCirBTC -= cirBTCAmount;
@@ -213,9 +258,9 @@ contract AgenticMultiCollateralPool {
         collateralUSDC = pos.collateralUSDC;
         collateralCirBTC = pos.collateralCirBTC;
         borrowedEURC = pos.borrowedEURC;
-        currentBtcPrice = btcPrice;
+        currentBtcPrice = getBTCPrice();
         
-        totalCollateralUSD = collateralUSDC + (collateralCirBTC * btcPrice) / 10**8;
+        totalCollateralUSD = collateralUSDC + (collateralCirBTC * currentBtcPrice) / 10**8;
         uint256 userLTV = getUserLTV(user);
         maxBorrowEURC = (totalCollateralUSD * userLTV * EXCHANGE_RATE) / 10000;
         
@@ -226,3 +271,4 @@ contract AgenticMultiCollateralPool {
         }
     }
 }
+

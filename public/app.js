@@ -148,6 +148,14 @@ async function fetchData() {
     updateLending(statusData.lending);
     updateAIBrain(resultsData);
     updatePolicyStatus();
+
+    try {
+      const ccipRes = await fetch('/api/ccip/status');
+      const ccipData = await ccipRes.json();
+      if (ccipData.success) {
+        updateCCIPInfo(ccipData);
+      }
+    } catch (e) {}
     
     if (elements.statLastUpdate) {
       elements.statLastUpdate.textContent = new Date().toLocaleTimeString('vi-VN');
@@ -971,6 +979,32 @@ function updateLending(lending) {
   }
 }
 
+function updateCCIPInfo(data) {
+  const lblOracleMode = document.getElementById('lbl-oracle-mode');
+  if (lblOracleMode) {
+    lblOracleMode.textContent = data.useChainlinkOracle ? 'Chainlink Feed' : 'Simulated Oracle';
+    lblOracleMode.className = data.useChainlinkOracle ? 'val text-info' : 'val text-warning';
+  }
+
+  const chainlinkBtcFeed = document.getElementById('chainlink-btc-feed');
+  if (chainlinkBtcFeed) {
+    chainlinkBtcFeed.textContent = formatAddressShort(data.btcPriceFeed);
+    chainlinkBtcFeed.title = data.btcPriceFeed;
+  }
+
+  const ccipRouterAddress = document.getElementById('ccip-router-address');
+  if (ccipRouterAddress) {
+    ccipRouterAddress.textContent = formatAddressShort(data.ccipRouter);
+    ccipRouterAddress.title = data.ccipRouter;
+  }
+
+  const ccipReceiverAddress = document.getElementById('ccip-receiver-address');
+  if (ccipReceiverAddress) {
+    ccipReceiverAddress.textContent = formatAddressShort(data.ccipReceiver);
+    ccipReceiverAddress.title = data.ccipReceiver;
+  }
+}
+
 function setupLendingActions() {
   const actions = [
     { btn: elements.btnLendingDeposit, action: 'deposit' },
@@ -1025,7 +1059,36 @@ function setupLendingActions() {
   const btnOracleCrash = document.getElementById('btn-oracle-crash');
   const btnOracleRestore = document.getElementById('btn-oracle-restore');
   const btnOracleSimDeleverage = document.getElementById('btn-oracle-sim-deleverage');
-  const btnOracleSimCctp = document.getElementById('btn-oracle-sim-cctp');
+  const btnOracleSimCcip = document.getElementById('btn-oracle-sim-ccip');
+  const btnToggleChainlink = document.getElementById('btn-toggle-chainlink');
+
+  if (btnToggleChainlink) {
+    btnToggleChainlink.addEventListener('click', async () => {
+      btnToggleChainlink.disabled = true;
+      try {
+        const lbl = document.getElementById('lbl-oracle-mode');
+        const currentUseChainlink = lbl ? (lbl.textContent === 'Chainlink Feed') : false;
+        const useChainlink = !currentUseChainlink;
+
+        const res = await fetch('/api/ccip/oracle-mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ useChainlink })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Đã chuyển đổi Oracle Mode thành: ${useChainlink ? 'Chainlink Price Feed' : 'Simulated Oracle'}`);
+        } else {
+          showToast(`Error: ${data.error}`, true);
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối API Oracle Mode!', true);
+      } finally {
+        btnToggleChainlink.disabled = false;
+        fetchData();
+      }
+    });
+  }
 
   if (btnOracleCrash) {
     btnOracleCrash.addEventListener('click', async () => {
@@ -1107,15 +1170,15 @@ function setupLendingActions() {
     });
   }
 
-  if (btnOracleSimCctp) {
-    btnOracleSimCctp.addEventListener('click', async () => {
-      btnOracleSimCctp.disabled = true;
+  if (btnOracleSimCcip) {
+    btnOracleSimCcip.addEventListener('click', async () => {
+      btnOracleSimCcip.disabled = true;
       try {
-        // Step 1: Simulate Low USDC mode with cctp
+        // Step 1: Simulate Low USDC mode with ccip
         await fetch('/api/lending/simulate-low-usdc', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'cctp' })
+          body: JSON.stringify({ mode: 'ccip' })
         });
         
         // Step 2: Crash BTC Price
@@ -1126,14 +1189,14 @@ function setupLendingActions() {
         });
         const data = await res.json();
         if (data.success) {
-          showToast('Mô phỏng ví hết USDC & sập giá BTC! Agent sẽ gọi Circle CCTP cứu ví.');
+          showToast('Mô phỏng ví hết USDC & sập giá BTC! Agent sẽ gọi Chainlink CCIP cứu ví.');
         } else {
           showToast(`Error: ${data.error}`, true);
         }
       } catch (err) {
         showToast('Lỗi kết nối Simulator API!', true);
       } finally {
-        btnOracleSimCctp.disabled = false;
+        btnOracleSimCcip.disabled = false;
         fetchData();
       }
     });

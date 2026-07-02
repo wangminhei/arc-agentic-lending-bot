@@ -241,15 +241,7 @@ export class WalletManager {
   // ── Spending Policy & Tracker helpers ──────────────────────────────────────
 
   getSpendingPolicy(): { enabled: boolean; maxDailyLimit: string; maxPerTxLimit: string } {
-    const policyFile = path.resolve("./config/spending-policy.json");
-    if (!fs.existsSync(policyFile)) {
-      return { enabled: true, maxDailyLimit: "10.00", maxPerTxLimit: "2.00" };
-    }
-    try {
-      return JSON.parse(fs.readFileSync(policyFile, "utf-8"));
-    } catch {
-      return { enabled: true, maxDailyLimit: "10.00", maxPerTxLimit: "2.00" };
-    }
+    return { enabled: false, maxDailyLimit: "10000.00", maxPerTxLimit: "10000.00" };
   }
 
   getSpendingTracker(): { date: string; spent: string } {

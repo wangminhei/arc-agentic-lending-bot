@@ -1514,7 +1514,7 @@ export class TaskExecutor {
       let autoAmount = "0";
 
       let simulateLowUSDC = false;
-      let simMode = "deleverage"; // "deleverage" or "cctp"
+      let simMode = "deleverage"; // "deleverage" or "ccip"
       const simPath = path.resolve(`./runtime/${this.workerId}/state/simulate-low-usdc.json`);
       if (fs.existsSync(simPath)) {
         try {
@@ -1569,45 +1569,28 @@ export class TaskExecutor {
           
           try { fs.writeFileSync(simPath, JSON.stringify({ active: false, mode: "deleverage" }, null, 2)); } catch {}
         } else {
-          // Idea 2: Circle CCTP Cross-Chain Simulation
-          executedAction = "cctp_sim";
+          // Idea 2: Chainlink CCIP Cross-Chain Simulation
+          executedAction = "ccip_sim";
           autoAmount = "10.00";
-          this.logger.warn(`  [Circle CCTP Simulation] Low USDC balance and no BTC collateral to sell.`);
-          this.logger.info(`  [CCTP Bridge] Initiating cross-chain bridge transfer of 10.00 USDC from Base Sepolia to Arc...`);
+          this.logger.warn(`  [Chainlink CCIP Simulation] Low USDC balance and no BTC collateral to sell.`);
+          this.logger.info(`  [CCIP Bridge] Calling CCIP Router to simulate cross-chain bridge transfer of 10.00 USDC from Base Sepolia to Arc...`);
           
-          const validatorBal = await this.walletManager.getUSDCBalance(wallets.validator.address);
-          if (parseFloat(validatorBal.usdc) >= 10.0) {
-            this.logger.info(`  [CCTP Gateway] Minting 10.00 USDC on Arc Testnet via Circle CCTP...`);
-            const refillTx = await this.walletManager.transferUSDC(
-              wallets.validator.id,
-              wallets.validator.address,
-              wallets.owner.address,
-              "10.00"
-            );
-            this.logger.success(`  [CCTP Bridge Confirmed] Received 10.00 USDC on Arc via CCTP. Tx: ${refillTx}`);
-            
-            executedAction = "deposit_after_cctp";
-            autoAmount = "5.00";
-            this.logger.info(`  [Lending Auto-Deposit] Depositing 5.00 USDC collateral from bridged funds...`);
-            const amountRaw = parseUnits(autoAmount, 6);
-            await this.walletManager.executeContract(
-              wallets.owner.address,
-              USDC_CONTRACT,
-              "approve(address,uint256)",
-              [lendingPoolAddress, amountRaw.toString()],
-              "Approve USDC to LendingPool"
-            );
-            txHash = await this.walletManager.executeContract(
-              wallets.owner.address,
-              lendingPoolAddress,
-              "depositUSDC(uint256)",
-              [amountRaw.toString()],
-              "Deposit USDC Collateral"
-            );
-            
-            try { fs.writeFileSync(simPath, JSON.stringify({ active: false, mode: "cctp" }, null, 2)); } catch {}
-          } else {
-            this.logger.error(`  [CCTP Simulation Failed] Validator wallet has insufficient USDC to mock CCTP bridge.`);
+          try {
+            const ccipUrl = "http://localhost:3000/api/ccip/simulate-receive";
+            const response = await axios.post(ccipUrl, { amount: "10.00" });
+            if (response.data && response.data.success) {
+              const ccipTx = response.data.txHash;
+              const msgId = response.data.messageId;
+              this.logger.success(`  [CCIP Message Confirmed] Received 10.00 USDC on Arc via CCIP. Message ID: ${msgId} | Tx: ${ccipTx}`);
+              txHash = ccipTx;
+              executedAction = "ccip_success";
+              
+              try { fs.writeFileSync(simPath, JSON.stringify({ active: false, mode: "ccip" }, null, 2)); } catch {}
+            } else {
+              throw new Error(response.data.error || "Unknown CCIP error");
+            }
+          } catch (e: any) {
+            this.logger.error(`  [CCIP Simulation Failed] Error: ${e.message}`);
           }
         }
       } 

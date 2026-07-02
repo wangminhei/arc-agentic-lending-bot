@@ -375,6 +375,10 @@
                       Simulate market movements on-chain. Crashing the price of Bitcoin will lower the collateral valuation, driving the Health Factor down. You can mock low USDC states to test emergency defenses.
                     </p>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
+                      <div style="display: flex; gap: 10px; align-items: center; background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 6px; margin-bottom: 5px;">
+                        <span style="font-size: 0.85rem; font-weight: bold; flex: 1;">Oracle Mode: <span id="lbl-oracle-mode" class="text-info">Chainlink Feed</span></span>
+                        <button id="btn-toggle-chainlink" class="btn btn-sm btn-info" style="padding: 4px 10px; font-size: 0.75rem; border: none; cursor: pointer; border-radius: 4px;">Switch Mode</button>
+                      </div>
                       <div style="display: flex; gap: 10px;">
                         <button id="btn-oracle-crash" class="btn btn-danger" style="flex: 1; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
                           <i data-lucide="trending-down"></i> Crash BTC ($60k)
@@ -386,8 +390,8 @@
                       <button id="btn-oracle-sim-deleverage" class="btn btn-warning btn-full-width" style="padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
                         <i data-lucide="shield-alert"></i> Sim Low USDC & Crash (Deleverage)
                       </button>
-                      <button id="btn-oracle-sim-cctp" class="btn btn-primary btn-full-width" style="padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
-                        <i data-lucide="shuffle"></i> Sim Low USDC & Crash (CCTP Bridge)
+                      <button id="btn-oracle-sim-ccip" class="btn btn-primary btn-full-width" style="padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                        <i data-lucide="shuffle"></i> Sim Low USDC & Crash (Chainlink CCIP)
                       </button>
                     </div>
                   </div>
@@ -401,8 +405,20 @@
                         <span class="val font-mono" id="lending-pool-address">0x...</span>
                       </div>
                       <div class="info-item">
-                        <span class="lbl">Simulated BTC Price (Oracle)</span>
+                        <span class="lbl">BTC Price Source</span>
                         <span class="val text-info" id="lending-btc-price">$90,000.00</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="lbl">Chainlink Price Feed</span>
+                        <span class="val font-mono" id="chainlink-btc-feed">0x...</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="lbl">Chainlink CCIP Router</span>
+                        <span class="val font-mono" id="ccip-router-address">0x...</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="lbl">CCIP Receiver Contract</span>
+                        <span class="val font-mono" id="ccip-receiver-address">0x...</span>
                       </div>
                       <div class="info-item">
                         <span class="lbl">Max Borrow Capacity</span>
